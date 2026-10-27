@@ -186,6 +186,28 @@ async function pageList(docs: DocStore) {
   return pages;
 }
 
+// Rendered pages, kept per index: a long README (36 sections, 132 images) took 1.5 s to render on 0.1 CPU. Least
+// recently used pages go past 300, and a changed index (new count) renders again.
+const renderedPages = new Map<string, { docs: DocStore; count: number; page: unknown }>();
+async function renderedPage(ws: Workspace, source: string) {
+  const key = `${ws.base}\u0000${source}`;
+  const count = await ws.docs.count();
+  const hit = renderedPages.get(key);
+  if (hit && hit.docs === ws.docs && hit.count === count) {
+    renderedPages.delete(key);
+    renderedPages.set(key, hit);
+    return hit.page;
+  }
+  const found = await ws.docs.page(source);
+  if (!found) return null;
+  const url = ws.link?.({ source, section: '' } as never);
+  const sections = found.sections.map((sec) => ({ ...sec, html: renderMarkdown(sec.body, { baseUrl: url, headingIds: false }) }));
+  const page = { ...found, sections, url };
+  renderedPages.set(key, { docs: ws.docs, count, page });
+  if (renderedPages.size > 300) renderedPages.delete(renderedPages.keys().next().value as string);
+  return page;
+}
+
 function sendPage(req: IncomingMessage, res: ServerResponse, html: string, headers: Record<string, string>) {
   res.statusCode = 200;
   res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -250,11 +272,10 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
 
   if (sub === 'page' && req.method === 'GET') {
     const source = url.searchParams.get('source') ?? '';
-    const found = source ? await ws.docs.page(source) : null;
-    if (!found) return sendJson(res, 404, { error: 'no such page' });
-    const fileLink = ws.link?.({ source, section: '' } as never);
-    const sections = found.sections.map((sec) => ({ ...sec, html: renderMarkdown(sec.body, { baseUrl: fileLink, headingIds: false }) }));
-    return sendJson(res, 200, { ...found, sections, url: fileLink });
+    const rendered = source ? await renderedPage(ws, source) : null;
+    if (!rendered) return sendJson(res, 404, { error: 'no such page' });
+    res.setHeader('cache-control', 'public, max-age=60');
+    return sendJson(res, 200, rendered);
   }
 
   if (sub === 'search' && req.method === 'GET') {
