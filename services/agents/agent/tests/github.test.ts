@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docPriority, fileUrl, githubAnchor, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
+import { docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
 
 describe('parseRepoPath', () => {
   it('reads owner, repo and the rest', () => {
@@ -53,7 +53,7 @@ describe('normalizeMarkdown', () => {
 
   it('strips MDX imports and JSX tags but keeps code fences and text', () => {
     const mdx = "import { Tab } from 'x'\n\n<Tabs>\n<Tab title=\"npm\">Install with npm</Tab>\n</Tabs>\n\n```js\nimport a from 'b'\n<Foo />\n```";
-    expect(normalizeMarkdown('a.mdx', mdx)).toBe("Install with npm\n\n\n```js\nimport a from 'b'\n<Foo />\n```");
+    expect(normalizeMarkdown('a.mdx', mdx)).toBe("Install with npm\n\n```js\nimport a from 'b'\n<Foo />\n```");
     expect(normalizeMarkdown('a.mdx', '{/* The content is shared.\n Keep it. */}\n\nReal text.')).toBe('Real text.');
   });
 });
@@ -93,5 +93,16 @@ describe('mkdocsToMarkdown', () => {
 
   it('drops snippet includes', () => {
     expect(mkdocsToMarkdown('a\n--8<-- "x.md"\nb')).toBe('a\nb');
+  });
+});
+
+describe('htmlToMarkdown', () => {
+  it('turns tables of image links into text and drops comments', () => {
+    const src = '<!-- generated -->\n<table>\n<tr><td><sub><b>1. Language?</b></sub><br><a href="x.md"><img src="a.svg" alt="TypeScript"></a></td><td><img src="b.svg" alt="Go"></td></tr>\n</table>\n\n**Could fit.**';
+    expect(htmlToMarkdown(src).trim()).toBe('1. Language?\nTypeScript · Go\n\n**Could fit.**');
+  });
+
+  it('leaves code alone', () => {
+    expect(htmlToMarkdown('Use `<App>` and <kbd>Ctrl</kbd>.\n```html\n<div>x</div>\n```')).toBe('Use `<App>` and Ctrl.\n```html\n<div>x</div>\n```');
   });
 });

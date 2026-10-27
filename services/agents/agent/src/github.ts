@@ -143,7 +143,7 @@ export function normalizeMarkdown(path: string, text: string): string {
     // MDX comments, {/* ... */}, can span lines.
     body = out.join('\n').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   }
-  body = mkdocsToMarkdown(body);
+  body = htmlToMarkdown(mkdocsToMarkdown(body));
   if (title) {
     // The front matter title is the page's real one (Next.js: "Glossary", over its "# A", "# B" letter headings), so
     // it becomes the only # heading and the body's own # headings move down a level, outside code fences.
@@ -158,6 +158,50 @@ export function normalizeMarkdown(path: string, text: string): string {
     body = `# ${title}\n\n${body}`;
   }
   return body.trim();
+}
+
+const HTML_TAGS =
+  'a|abbr|b|blockquote|br|center|code|dd|del|details|div|dl|dt|em|figcaption|figure|h[1-6]|hr|i|img|ins|kbd|li|mark|ol|p|picture|pre|q|s|samp|small|source|span|strong|sub|summary|sup|table|tbody|td|tfoot|th|thead|tr|u|ul|video';
+const TAG = new RegExp(`<\\/?(?:${HTML_TAGS})(?:\\s[^<>]*)?\\/?>`, 'gi');
+
+/**
+ * HTML inside Markdown (README badges, tables of image links, <details>) as text: comments dropped, an image becomes
+ * its alt text, line breaks and table rows become new lines, cells are separated, other tags go and their text stays.
+ * Code (fenced blocks and inline spans) is left alone, so `<App>` in a code span survives.
+ */
+export function htmlToMarkdown(body: string): string {
+  const out: string[] = [];
+  let inFence = false;
+  for (const line of body.replace(/<!--[\s\S]*?-->/g, '').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    if (inFence || !/<\/?[a-z]/i.test(line)) {
+      out.push(line);
+      continue;
+    }
+    const text = line
+      .split(/(`[^`]*`)/g)
+      .map((part, i) =>
+        i % 2 === 1
+          ? part
+          : part
+              .replace(/<img\b[^>]*?\balt="([^"]*)"[^>]*>/gi, (_, alt: string) => (alt ? `${alt} · ` : ''))
+              .replace(/<br\s*\/?>/gi, '\n')
+              .replace(/<\/t[dh]>\s*<t[dh]\b[^>]*>/gi, ' · ')
+              .replace(/<\/tr>/gi, '\n')
+              .replace(TAG, ''),
+      )
+      .join('');
+    out.push(
+      ...text.split('\n').map((l) =>
+        l
+          .replace(/(\s*·\s*){2,}/g, ' · ')
+          .replace(/\s{2,}/g, ' ')
+          .replace(/^\s*·\s*|\s*·\s*$/g, '')
+          .trimEnd(),
+      ),
+    );
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /**
