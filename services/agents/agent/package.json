@@ -12,7 +12,9 @@
     "seed:pack": "bun scripts/pack-seed-docs.ts"
   },
   "dependencies": {
-    "pg": "^8.13.0"
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "pg": "^8.13.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",

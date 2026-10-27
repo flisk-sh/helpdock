@@ -2,8 +2,9 @@ import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { Pool } from 'pg';
-import { type Answer, buildPrompt, chunkMarkdown, citedAnswer, extractiveAnswer, type SearchHit } from './docs';
+import { aiPrompt, type Answer, chunkMarkdown, extractiveAnswer, type SearchHit } from './docs';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
+import { handleMcp } from './mcp';
 import { seedPages } from './seed-docs.generated';
 import { page } from './ui';
 
@@ -12,8 +13,6 @@ import { page } from './ui';
 //   DATABASE_URL      Postgres connection string injected by Flisk
 //   PORT              port to listen on
 // Helpdock settings:
-//   ANTHROPIC_API_KEY optional; with it answers are written by Claude from the passages, without it they are quoted
-//   HELPDOCK_MODEL    Claude model id (default claude-haiku-5-5)
 //   HELPDOCK_DOCS_DIR Markdown folder loaded on first start when help_docs is empty; without it, the pages packed
 //                     from seed-docs/ into src/seed-docs.generated.ts are loaded
 // Online use:
@@ -22,6 +21,7 @@ import { page } from './ui';
 //   HELPDOCK_PROXY          none (default), last-forwarded (Render) or cloudflare: where the client address comes
 //                           from, so rate limits key on the real visitor (see parseProxyMode in guard.ts)
 //   HELPDOCK_TURNS_PER_HOUR questions per client address per hour (default 60)
+//   HELPDOCK_PUBLIC_URL     the page's public address, named in the prompt visitors take to their own AI
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
 
 const DURABILITY = 'postgres';
@@ -29,7 +29,6 @@ const PORT = Number(process.env.PORT || 3000);
 const DRAIN_TIMEOUT_MS = 10_000;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
 
-const MODEL = process.env.HELPDOCK_MODEL || 'claude-haiku-5-5';
 const DOCS_DIR = process.env.HELPDOCK_DOCS_DIR;
 const ADMIN_TOKEN = process.env.HELPDOCK_ADMIN_TOKEN || undefined;
 const PROXY_MODE = parseProxyMode(process.env.HELPDOCK_PROXY);
@@ -177,37 +176,19 @@ async function seedDocs(): Promise<void> {
   console.error('[agent] gave up seeding docs: help_docs is unreachable');
 }
 
-async function askClaude(question: string, hits: SearchHit[]): Promise<string> {
-  const { system, user } = buildPrompt(question, hits);
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': String(process.env.ANTHROPIC_API_KEY),
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: 600, system, messages: [{ role: 'user', content: user }] }),
-  });
-  if (!res.ok) throw new Error(`Claude answered ${res.status}: ${await res.text()}`);
-  const body = (await res.json()) as { content: Array<{ type: string; text?: string }> };
-  return body.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+// A turn: search the docs and answer with the best passages, each cited. No model and no outside API: the reply
+// is built from the docs alone, so the same question always gets the same answer.
+async function runTurn(_checkpoint: Checkpoint, input: string, siteUrl: string): Promise<Answer & { prompt: string }> {
+  const hits = await docs.search(input);
+  return { ...extractiveAnswer(input, hits), prompt: aiPrompt(input, hits, siteUrl) };
 }
 
-// A turn: search the docs, then answer from the hits. Claude writes the answer when a key is set; otherwise, or when
-// the call fails, the reply quotes the best passages, so the help center works with no key at all.
-async function runTurn(_checkpoint: Checkpoint, input: string): Promise<Answer> {
-  const hits = await docs.search(input);
-  if (hits.length > 0 && process.env.ANTHROPIC_API_KEY) {
-    try {
-      return citedAnswer(await askClaude(input, hits), hits);
-    } catch (err) {
-      console.error('[agent] Claude call failed, quoting the docs instead:', err);
-    }
-  }
-  return extractiveAnswer(input, hits);
+// The public address of this page, for the prompt that visitors take to their own AI. HELPDOCK_PUBLIC_URL when set,
+// else the request's own host.
+function siteUrl(req: IncomingMessage): string {
+  if (process.env.HELPDOCK_PUBLIC_URL) return process.env.HELPDOCK_PUBLIC_URL;
+  const proto = String(req.headers['x-forwarded-proto'] ?? 'http').split(',')[0].trim();
+  return `${proto}://${req.headers.host ?? 'localhost'}/`;
 }
 
 let draining = false;
@@ -289,6 +270,25 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { source, sections: await docs.upsert(source, body.markdown) });
     }
 
+    // Public, read-only MCP for the visitor's own AI. Stateless Streamable HTTP: POST only.
+    if (url.pathname === '/mcp') {
+      res.setHeader('access-control-allow-origin', '*');
+      res.setHeader('access-control-allow-headers', 'content-type, accept, mcp-protocol-version');
+      res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204;
+        return res.end();
+      }
+      if (req.method !== 'POST') {
+        res.setHeader('allow', 'POST');
+        return sendJson(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
+      }
+      const wait = readLimit.hit(ip);
+      if (wait) return tooMany(res, wait);
+      const body = await readJson(req);
+      return handleMcp(req, res, body, { search: (q, limit) => docs.search(q.slice(0, MAX_QUESTION_CHARS), limit) });
+    }
+
     if (url.pathname === '/ready') {
       const ok = !draining && (await store.ready());
       return sendJson(res, ok ? 200 : 503, { ready: ok, durability: DURABILITY });
@@ -312,11 +312,11 @@ const server = createServer(async (req, res) => {
       if (wait) return tooMany(res, wait);
       const checkpoint = await store.load(sessionId);
       checkpoint.messages.push({ role: 'user', content: input, at: new Date().toISOString() });
-      const { reply, sources } = await runTurn(checkpoint, input);
+      const { reply, sources, prompt } = await runTurn(checkpoint, input, siteUrl(req));
       checkpoint.messages.push({ role: 'agent', content: reply, sources, at: new Date().toISOString() });
       checkpoint.messages = checkpoint.messages.slice(-MAX_SESSION_MESSAGES);
       await store.save(checkpoint);
-      return sendJson(res, 200, { sessionId, reply, sources, turns: Math.ceil(checkpoint.messages.length / 2) });
+      return sendJson(res, 200, { sessionId, reply, sources, prompt, turns: Math.ceil(checkpoint.messages.length / 2) });
     }
 
     if (url.pathname === '/session' && req.method === 'GET') {

@@ -33,14 +33,20 @@ export const page = `<!doctype html>
   .thinking { color:var(--muted); }
   footer { margin-top:48px; font-size:13px; color:var(--muted); }
   footer a { color:var(--accent); }
+  .pill { font:inherit; font-size:14px; font-weight:500; padding:5px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--ink); text-decoration:none; cursor:pointer; }
+  .pill:hover { border-color:var(--accent); }
+  .ai { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0 0; font-size:14px; color:var(--muted); }
+  .mcp { margin:24px 0 0; padding:12px 16px; border:1px dashed var(--line); border-radius:12px; font-size:14px; color:var(--muted); display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .mcp code { background:var(--chip); color:var(--accent); padding:2px 8px; border-radius:6px; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
 <main>
   <h1>How can we help?</h1>
-  <p class="sub">Ask in your own words. Every answer links the pages it came from.</p>
+  <p class="sub">Ask in your own words. Every answer quotes the pages it came from, and you can hand it to your own AI.</p>
   <form id="f"><input id="q" autocomplete="off" placeholder="e.g. How do I fix a port that is already in use?" autofocus><button id="go">Ask</button></form>
   <div class="ideas" id="ideas"></div>
+  <div class="mcp">Use these docs in your own AI: add <code id="mcpurl"></code> as an MCP server in Claude, ChatGPT, Cursor or Codex. <button class="pill" id="copymcp" type="button">Copy</button></div>
   <div id="log"></div>
   <footer>Open source: <a href="https://github.com/flisk-sh/helpdock">flisk-sh/helpdock</a>. Built and run with <a href="https://github.com/flisk-sh/flisk">Flisk</a>.</footer>
 </main>
@@ -49,6 +55,32 @@ const base = location.pathname.endsWith('/') ? location.pathname : location.path
 const sid = (() => { try { return localStorage.getItem('helpdock-sid') || (localStorage.setItem('helpdock-sid', crypto.randomUUID()), localStorage.getItem('helpdock-sid')); } catch { return crypto.randomUUID(); } })();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+// Copies text; says so on the button for a moment.
+async function copy(text, btn) {
+  const label = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; } catch { btn.textContent = 'Copy failed'; }
+  setTimeout(() => { btn.textContent = label; }, 1500);
+}
+function pill(tag, label) { const el = document.createElement(tag); el.className = 'pill'; el.textContent = label; if (tag === 'button') el.type = 'button'; return el; }
+const mcpUrl = location.origin + base + 'mcp';
+$('mcpurl').textContent = mcpUrl;
+$('copymcp').onclick = () => copy(mcpUrl, $('copymcp'));
+
+// "Ask your AI": the visitor's own assistant writes the answer from the cited passages. ChatGPT takes the prompt in
+// its URL; Claude's prefill is not reliable, so its button copies the prompt first, then opens Claude to paste it.
+function askYourAi(prompt) {
+  const row = document.createElement('div'); row.className = 'ai';
+  row.append('Ask your AI:');
+  const chatgpt = pill('a', 'ChatGPT');
+  chatgpt.href = 'https://chatgpt.com/?q=' + encodeURIComponent(prompt); chatgpt.target = '_blank'; chatgpt.rel = 'noopener';
+  const claude = pill('button', 'Claude');
+  claude.onclick = async () => { await copy(prompt, claude); window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank', 'noopener'); };
+  const other = pill('button', 'Copy prompt');
+  other.onclick = () => copy(prompt, other);
+  row.append(chatgpt, claude, other);
+  return row;
+}
+
 ['How do I fix a port that is already in use?', 'Bring my own Docker image', 'Run Flisk on Windows', 'How do agents keep sessions?']
   .forEach((t) => { const a = document.createElement('a'); a.textContent = t; a.onclick = () => ask(t); $('ideas').append(a); });
 
@@ -70,6 +102,7 @@ async function ask(question) {
       const ul = document.createElement('ul'); ul.className = 'src';
       ul.innerHTML = body.sources.map((s) => '<li id="' + id + '-' + s.n + '"><b>[' + s.n + ']</b>' + esc(s.title) + (s.section ? ' › ' + esc(s.section) : '') + ' <small>(' + esc(s.source) + ')</small></li>').join('');
       a.after(ul);
+      ul.after(askYourAi(body.prompt));
     }
   } catch (e) {
     turn.querySelector('.a').textContent = 'Something went wrong: ' + e.message;

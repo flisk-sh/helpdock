@@ -25,7 +25,7 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 
 **Description** (under 260 characters):
 
-> Point Helpdock at a folder of Markdown and get a help center that answers questions in plain words, with a link to every page it used. Works with no API key (it quotes your docs); add a Claude key for written answers. MCP server included. MIT, self-hosted.
+> Point Helpdock at a folder of Markdown and get a help center that answers questions in plain words, with a link to every page it used. No API key, no model: answers quote your docs, and visitors take them to their own AI in one click, or plug the MCP endpoint into theirs. MIT, self-hosted.
 
 **Tags:** Open Source, Customer Success, Developer Tools.
 
@@ -33,15 +33,15 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 
 1. The page answering "How do I fix a port that is already in use?", with citations [1] [2] under it.
 2. The same question with no API key: quoted passages, still cited.
-3. Claude Code calling `ask_help_center` over MCP.
+3. A visitor's own Claude or ChatGPT answering from Helpdock: the *Ask your AI* button, and `helpdock.flisk.sh/mcp` added as an MCP server.
 4. The terminal: `git clone … && flisk up agents`, then the page opening.
 5. The architecture: agent + Postgres full-text search + migrator + MCP server, laid out by Flisk.
 
 ## Maker first comment
 
-> Hi, I'm one of the people behind Flisk. Help centers break in a familiar way: search finds the page, but not the answer in it. Helpdock splits your Markdown into sections, searches them with Postgres full-text search (no vector database, no embeddings to keep in sync), and answers with numbered links to the sections it used. With no key it quotes the passages; with a Claude key it writes the answer and cites them.
+> Hi, I'm one of the people behind Flisk. Help centers break in a familiar way: search finds the page, but not the answer in it. Helpdock splits your Markdown into sections, searches them with Postgres full-text search (no vector database, no embeddings to keep in sync), and answers with numbered links to the sections it used. It calls no model and needs no API key: it quotes the passages.
 >
-> It's also an MCP server, so Claude Code or Cursor can ask the same help center your users do.
+> If a visitor wants a written answer, they bring their own AI: one click hands the question and the cited passages to their ChatGPT or Claude, and the read-only MCP endpoint lets their assistant search the docs itself.
 >
 > One question for you: would you point this at public docs, or at internal runbooks first?
 

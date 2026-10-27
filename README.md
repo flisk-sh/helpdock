@@ -2,9 +2,10 @@
 
 Your docs, as a help center that answers with sources. Point it at a folder of Markdown; ask in plain words; every answer links the sections it came from.
 
-- **Works without a key.** With no API key it quotes the best passages. Set `ANTHROPIC_API_KEY` and Claude writes the answer from those passages and cites them.
+- **No API key, no model.** It answers with the best matching passages, each cited. Nothing is sent to an AI provider.
+- **Bring your own AI.** Under every answer, *Ask your AI* hands the question and the cited passages to the visitor's own ChatGPT or Claude (or copies the prompt for any other). And `/mcp` is a public, read-only MCP endpoint: add `https://helpdock.flisk.sh/mcp` to Claude, ChatGPT, Cursor or Codex and the assistant searches the docs itself.
 - **No vector database.** Pages are split on headings and searched with Postgres full-text search (`websearch_to_tsquery`, `ts_rank`, `ts_headline`).
-- **Also an MCP server.** Claude Code, Cursor or Codex can call `search_docs`, `ask_help_center` and `add_doc`.
+- **Local MCP server with writes.** Run with Flisk, `services/agents/tools` also offers `add_doc`, so your coding agent can add pages.
 - **Runs on your machine.** Built and run with [Flisk](https://github.com/flisk-sh/flisk): one `flisk up` starts Postgres, the migrator, the agent and the MCP server.
 
 ## Run it
@@ -37,11 +38,12 @@ Helpdock can run online for free at **helpdock.flisk.sh**: a Render free web ser
 | Route | What it does |
 | --- | --- |
 | `GET /` | The help center page |
-| `POST /turn` | `{"input": "question"}` with an `x-session-id` header → `{reply, sources}`; the session is checkpointed in Postgres |
+| `POST /turn` | `{"input": "question"}` with an `x-session-id` header → `{reply, sources, prompt}` (`prompt` is what *Ask your AI* hands over); the session is checkpointed in Postgres |
+| `POST /mcp` | Public read-only MCP (Streamable HTTP): `search_docs`, `ask_help_center` |
 | `GET /search?q=` | Ranked sections with snippets |
 | `POST /docs` | `{"source", "markdown"}` adds or replaces one page; needs `authorization: Bearer $HELPDOCK_ADMIN_TOKEN` when the token is set, and is off in production without it |
 
-Settings: `ANTHROPIC_API_KEY` (optional), `HELPDOCK_MODEL` (default `claude-haiku-5-5`), `HELPDOCK_DOCS_DIR`, and for online use `HELPDOCK_ADMIN_TOKEN`, `HELPDOCK_PROXY`, `HELPDOCK_TURNS_PER_HOUR` (see the header of `services/agents/agent/src/index.ts`).
+Settings: `HELPDOCK_DOCS_DIR`, and for online use `HELPDOCK_ADMIN_TOKEN`, `HELPDOCK_PROXY`, `HELPDOCK_TURNS_PER_HOUR`, `HELPDOCK_PUBLIC_URL` (see the header of `services/agents/agent/src/index.ts`).
 
 ---
 

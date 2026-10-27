@@ -19,9 +19,7 @@ For a launch day with real traffic, the sleep is the cost of free: switch the we
 ## 2. Create the Blueprint on Render
 
 1. https://dashboard.render.com → **New → Blueprint** → `flisk-sh/helpdock`, branch `main`.
-2. Render lists one service, `helpdock`, on the **Free** plan. It asks for:
-   - `DATABASE_URL`: paste the Neon connection string.
-   - `ANTHROPIC_API_KEY`: leave empty to run without a model (answers quote the docs, still cited), or paste a key with a monthly spend limit. Answers are then written by `claude-haiku-5-5`.
+2. Render lists one service, `helpdock`, on the **Free** plan. It asks for one value, `DATABASE_URL`: paste the Neon connection string. There is no AI key to set: Helpdock calls no model. Answers quote the docs with citations, and visitors who want a written answer take it to their own AI (the *Ask your AI* buttons, or the MCP endpoint).
 3. **Apply.** Render builds the image and starts it. On every start the container applies the migrations (`migrate`, Prisma `migrate deploy`), then starts the agent; the first start also loads the seven starter pages. Render waits for `/ready`.
 4. Open the `onrender.com` URL Render shows (for example `https://helpdock.onrender.com/`) and ask a question.
 
@@ -57,7 +55,8 @@ Without the token `POST /docs` answers 403 (the image sets `NODE_ENV=production`
 
 ## What is and is not online
 
-- Online: the page, `POST /turn`, `GET /session`, `GET /search`, and `POST /docs` (admin only).
-- Not online: the MCP server (`services/agents/tools`). It stays a local tool you run with `flisk up`; point its `AGENT_URL` at `https://helpdock.flisk.sh` to ask the online help center from Claude Code.
-- Limits: 500 characters per question, 60 questions per hour and 300 searches per minute per visitor address, 64 KB request bodies (2 MB for `/docs`), the last 100 messages per session.
+- Online: the page, `POST /turn`, `GET /session`, `GET /search`, `POST /mcp` (public, read-only: `search_docs`, `ask_help_center`), and `POST /docs` (admin only).
+- Visitors' own AI: add `https://helpdock.flisk.sh/mcp` as a remote MCP server (Streamable HTTP, no auth) in Claude, ChatGPT, Cursor or Codex.
+- Not online: the local tools server (`services/agents/tools`) with `add_doc`. It stays a tool you run with `flisk up`.
+- Limits: 500 characters per question, 60 questions per hour and 300 searches or MCP calls per minute per visitor address, 64 KB request bodies (2 MB for `/docs`), the last 100 messages per session.
 - Rate limits are counted in memory. They reset whenever the free service sleeps or redeploys; that is acceptable for a demo, not for abuse protection under load.

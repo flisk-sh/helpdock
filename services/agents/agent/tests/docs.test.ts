@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPrompt, chunkMarkdown, citedAnswer, cleanSnippet, extractiveAnswer, type SearchHit } from '../src/docs';
+import { aiPrompt, chunkMarkdown, cleanSnippet, extractiveAnswer, type SearchHit } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -68,19 +68,20 @@ describe('answers', () => {
     });
   });
 
-  it('buildPrompt numbers the passages', () => {
-    const { user } = buildPrompt('why?', [hit(1), hit(2, { section: '' })]);
-    expect(user).toContain('[1] Page 1 > Section 1\ntext 1');
-    expect(user).toContain('[2] Page 2\ntext 2');
-    expect(user).toContain('Question: why?');
+  it('aiPrompt carries the question and the numbered passages', () => {
+    const p = aiPrompt('why?', [hit(1), hit(2, { section: '' })], 'https://helpdock.flisk.sh/');
+    expect(p).toContain('help center at https://helpdock.flisk.sh/');
+    expect(p).toContain('Question: why?');
+    expect(p).toContain('[1] Page 1 › Section 1 (page-1.md)\ntext 1');
+    expect(p).toContain('[2] Page 2 (page-2.md)\ntext 2');
   });
 
-  it('citedAnswer keeps only cited sources and renumbers them in order', () => {
-    const a = citedAnswer('Use WSL2 [3]. Then run it [1][3]. Ignore [9].', [hit(1), hit(2), hit(3)]);
-    expect(a.reply).toBe('Use WSL2 [1]. Then run it [2][1]. Ignore [9].');
-    expect(a.sources.map((s) => [s.n, s.source])).toEqual([
-      [1, 'page-3.md'],
-      [2, 'page-1.md'],
-    ]);
+  it('aiPrompt stays short enough for a prefill URL', () => {
+    const long = hit(1, { snippet: 'x'.repeat(5000) });
+    const p = aiPrompt('q', [long, hit(2, { snippet: 'y'.repeat(5000) })], 'https://h');
+    expect(p.length).toBeLessThanOrEqual(6000);
+    expect(p).toContain('[1]');
+    expect(p).not.toContain('[2]');
+    expect(aiPrompt('q', [], 'https://h')).toContain('(no matching passages)');
   });
 });

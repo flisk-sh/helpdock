@@ -84,7 +84,7 @@ function sourceList(hits: SearchHit[]): Answer['sources'] {
   return hits.map((h, i) => ({ n: i + 1, title: h.title, section: h.section, source: h.source }));
 }
 
-// The answer without a model: the best matching passages, each with its citation number.
+// The answer: the best matching passages, each with its citation number.
 export function extractiveAnswer(question: string, hits: SearchHit[]): Answer {
   if (hits.length === 0) {
     return {
@@ -97,25 +97,20 @@ export function extractiveAnswer(question: string, hits: SearchHit[]): Answer {
   return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources: sourceList(top) };
 }
 
-// The prompt for a model answer: numbered passages, and the rule to cite them and nothing else.
-export function buildPrompt(question: string, hits: SearchHit[]): { system: string; user: string } {
-  const passages = hits
-    .map((h, i) => `[${i + 1}] ${h.title}${h.section ? ' > ' + h.section : ''}\n${cleanSnippet(h.snippet)}`)
-    .join('\n\n');
-  return {
-    system:
-      'You are a help center assistant. Answer only from the numbered passages. Cite each claim with its number, ' +
-      'like [1]. If the passages do not answer the question, say so in one sentence. Keep it short.',
-    user: `Passages:\n\n${passages}\n\nQuestion: ${question}`,
-  };
-}
+const MAX_PROMPT_CHARS = 6000;
 
-// Keep only the sources the model actually cited, renumbered in order, so the list under the answer matches it.
-export function citedAnswer(reply: string, hits: SearchHit[]): Answer {
-  const cited = [...new Set([...reply.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])))].filter(
-    (n) => n >= 1 && n <= hits.length,
-  );
-  const renumber = new Map(cited.map((n, i) => [n, i + 1]));
-  const text = reply.replace(/\[(\d+)\]/g, (m, d) => (renumber.has(Number(d)) ? `[${renumber.get(Number(d))}]` : m));
-  return { reply: text, sources: sourceList(cited.map((n) => hits[n - 1])) };
+// The prompt a visitor takes to their own AI (the "Ask your AI" buttons): the question, the cited passages, and the
+// rule to answer from them only. Kept under MAX_PROMPT_CHARS so it fits in a prefill URL.
+export function aiPrompt(question: string, hits: SearchHit[], siteUrl: string): string {
+  const head =
+    `Answer my question using only the passages below from the help center at ${siteUrl}. ` +
+    'Cite each claim with its number, like [1]. If the passages do not answer it, say so.\n\n' +
+    `Question: ${question}\n\nPassages:\n`;
+  let body = '';
+  for (const [i, h] of hits.slice(0, 3).entries()) {
+    const passage = `\n[${i + 1}] ${h.title}${h.section ? ' › ' + h.section : ''} (${h.source})\n${cleanSnippet(h.snippet)}\n`;
+    if (head.length + body.length + passage.length > MAX_PROMPT_CHARS) break;
+    body += passage;
+  }
+  return head + (body || '\n(no matching passages)\n');
 }
