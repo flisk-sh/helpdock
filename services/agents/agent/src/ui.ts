@@ -79,6 +79,33 @@ input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 footer.foot { color:var(--muted); font-size:14px; padding:36px 0 48px; display:flex; flex-wrap:wrap; gap:8px 20px; justify-content:space-between; }
 `;
 
+// A placeholder that types example phrases, deletes them and types the next, as if someone were typing. It stops
+// while the field has focus or a value, and with reduced motion it shows the first phrase still.
+const typewriterJs = String.raw`
+function typewriter(input, phrases, prefix) {
+  prefix = prefix || '';
+  if (!phrases.length) return;
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (still) { input.placeholder = prefix + phrases[0]; return; }
+  var i = 0, n = 0, deleting = false, timer = null;
+  function idle() { return document.activeElement !== input && !input.value; }
+  function rest() { input.placeholder = prefix + phrases[i % phrases.length]; }
+  function tick() {
+    if (!idle()) { timer = null; rest(); return; }
+    var word = phrases[i % phrases.length];
+    n += deleting ? -1 : 1;
+    input.placeholder = prefix + word.slice(0, n) + (deleting || n < word.length ? '|' : '');
+    var wait = deleting ? 28 : 65 + Math.random() * 60;
+    if (!deleting && n >= word.length) { deleting = true; wait = 1500; input.placeholder = prefix + word; }
+    else if (deleting && n <= 0) { deleting = false; i++; wait = 350; }
+    timer = setTimeout(tick, wait);
+  }
+  input.addEventListener('focus', function () { clearTimeout(timer); timer = null; rest(); });
+  input.addEventListener('blur', function () { if (!timer && !input.value) { n = 0; deleting = false; timer = setTimeout(tick, 600); } });
+  timer = setTimeout(tick, 500);
+}
+`;
+
 const landingCss = String.raw`
 .hero { padding:56px 0 28px; }
 .eyebrow { display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:600; color:var(--accent); background:var(--tint); padding:5px 12px; border-radius:999px; }
@@ -124,6 +151,7 @@ document.getElementById('open').onsubmit = function (e) {
   location.href = '/' + repo + '/';
 };
 document.querySelectorAll('[data-host]').forEach(function (el) { el.textContent = location.host; });
+typewriter(document.getElementById('repo'), ['vercel/next.js', 'shadcn-ui/ui', 'ollama/ollama', 'n8n-io/n8n-docs', 'excalidraw/excalidraw', 'your-org/your-repo'], 'github.com/');
 document.getElementById('copytry').onclick = function () {
   var b = this; navigator.clipboard.writeText(location.origin + '/vercel/next.js/').then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy failed'; });
   setTimeout(function () { b.textContent = 'Copy'; }, 1500);
@@ -179,7 +207,7 @@ export const landingPage = `<!doctype html>
   </section>
   <footer class="foot"><span>Helpdock · <a href="https://github.com/flisk-sh/helpdock">flisk-sh/helpdock</a> · MIT</span><span>Public repositories only. Not affiliated with GitHub.</span></footer>
 </div>
-<script>${landingJs}</script>
+<script>${typewriterJs}${landingJs}</script>
 </body>
 </html>`;
 
@@ -259,7 +287,7 @@ details.fold.more > summary { color:var(--muted); }
 const centerJs = String.raw`
 var base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 var $ = function (id) { return document.getElementById(id); };
-var info = null, pages = [], current = null, readmeShown = false;
+var info = null, pages = [], current = null, readmeShown = false, typing = false;
 // While the index builds, the README comes straight from GitHub so there is something to read at once.
 function showReadme() {
   readmeShown = 'loading';
@@ -329,7 +357,7 @@ function boot() {
     if (hash.indexOf('page=') === 0) openPage(hash.slice(5));
     else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
     else if (hash === 'mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
-    else $('q').focus();
+    // No autofocus: the typing placeholder shows the kind of question to ask; a click starts.
   }).catch(function (e) {
     setStatus('Unavailable', true);
     $('loading').hidden = true;
@@ -464,6 +492,8 @@ function renderStart() {
     grid.append(c);
   });
   box.append(grid);
+  // The question box types this repository's own topics as examples.
+  if (!typing) { typing = true; typewriter($('q'), picks.map(function (p) { return p.title; }), 'Ask about '); }
   // Suggested questions: the same topics, phrased as one.
   var chips = $('chips'); chips.textContent = '';
   picks.slice(0, 4).forEach(function (p) {
@@ -586,6 +616,6 @@ export const centerPage = `<!doctype html>
     <section id="article" class="article" hidden></section>
   </main>
 </div>
-<script>${centerJs}</script>
+<script>${typewriterJs}${centerJs}</script>
 </body>
 </html>`;
