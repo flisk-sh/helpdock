@@ -31,9 +31,9 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 
 **Gallery (5):**
 
-1. The URL swap: `github.com/astral-sh/uv` → `helpdock.flisk.sh/astral-sh/uv`, and the help center it opens.
-2. A question ("how do I pin a Python version?") answered with cited passages and code, linked to GitHub.
-3. "Use in your AI": `claude mcp add --transport http uv https://helpdock.flisk.sh/astral-sh/uv/mcp`, then Claude Code answering from it.
+1. The URL swap: `github.com/vercel/next.js` → `helpdock.flisk.sh/vercel/next.js`, and the help center it opens.
+2. A question ("how do I add middleware?") answered with cited passages and code from the Next.js docs, linked to GitHub.
+3. "Use in your AI": `claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp`, then Claude Code answering from it.
 4. *Ask your AI*: ChatGPT opened with the question and the cited passages.
 5. How it works: one GitHub API call, Markdown fetched in parallel, SQLite full-text search, no model; built and run with Flisk.
 

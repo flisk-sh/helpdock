@@ -1,12 +1,15 @@
-// Reading a public GitHub repository's Markdown, two ways:
-//   readRepoViaApi      one call to the git trees API lists every file, then only the chosen docs are fetched from
-//                       raw.githubusercontent.com, in parallel. Fast, and it downloads docs only. Unauthenticated, the
-//                       API allows 60 calls an hour per address (GITHUB_TOKEN, optional, raises that).
-//   readRepoMarkdown    GitHub's archive download (codeload.github.com, no API limit), gunzipped and untarred as it
-//                       streams, keeping only documentation. The fallback when the API says no.
-// readRepoDocs tries the first and falls back to the second. Both stop at fixed limits so a huge repository cannot
+// Reading a public GitHub repository's Markdown, two ways, fastest first:
+//   readRepoViaApi       one call to the git trees API lists every file, then only the chosen docs are fetched from
+//                        raw.githubusercontent.com, in parallel. Unauthenticated, the API allows 60 calls an hour per
+//                        address, and a host's address is often shared (GITHUB_TOKEN, optional, lifts that to 5000).
+//   readRepoMarkdown     GitHub's archive download (codeload.github.com), gunzipped and untarred as it streams,
+//                        keeping only documentation. Works for any public repository, slowly for big ones.
+// readRepoDocs tries them in that order. (jsDelivr's GitHub mirror was tried and dropped: its branch listings can be
+// months old, so it served docs that no longer exist.) Both stop at fixed limits so a huge repository cannot
 // exhaust a small instance. The hosts are fixed and the owner and name are validated, so a request can never make the
 // server fetch an address of its choosing.
+import { Readable } from 'node:stream';
+import { createGunzip } from 'node:zlib';
 import { TarStream } from './tar';
 
 export interface RepoRef {
@@ -131,7 +134,19 @@ export function normalizeMarkdown(path: string, text: string): string {
     body = out.join('\n');
   }
   body = mkdocsToMarkdown(body);
-  if (title && !/^#\s+\S/m.test(body)) body = `# ${title}\n\n${body}`;
+  if (title) {
+    // The front matter title is the page's real one (Next.js: "Glossary", over its "# A", "# B" letter headings), so
+    // it becomes the only # heading and the body's own # headings move down a level, outside code fences.
+    let inFence = false;
+    body = body
+      .split('\n')
+      .map((line) => {
+        if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+        return !inFence && /^#\s+\S/.test(line) ? `#${line}` : line;
+      })
+      .join('\n');
+    body = `# ${title}\n\n${body}`;
+  }
   return body.trim();
 }
 
@@ -198,7 +213,13 @@ export async function readRepoMarkdown(
 ): Promise<RepoRead> {
   const url = `https://codeload.github.com/${ref.owner}/${ref.repo}/tar.gz/HEAD`;
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), limits.timeoutMs);
+  // Aborting the fetch does not reliably end a node stream piped from its body, so the timer destroys the stream too:
+  // a read that hangs would otherwise hold a build slot for good.
+  let gunzip: ReturnType<typeof createGunzip> | null = null;
+  const timer = setTimeout(() => {
+    abort.abort();
+    gunzip?.destroy();
+  }, limits.timeoutMs);
   const files: RepoFile[] = [];
   let totalBytes = 0;
   let archiveBytes = 0;
@@ -227,20 +248,25 @@ export async function readRepoMarkdown(
       },
     });
 
-    const reader = res.body.pipeThrough(new DecompressionStream('gzip')).getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      archiveBytes += value.length;
-      tar.push(value);
-      onProgress?.({ files: files.length, archiveBytes });
-      if (tar.done) break;
-      if (archiveBytes > limits.maxArchiveBytes || files.length >= limits.maxFiles * CANDIDATE_FACTOR) {
-        truncated = true;
-        await reader.cancel();
-        break;
+    // node:zlib rather than DecompressionStream, which older Bun releases do not have.
+    gunzip = Readable.fromWeb(res.body as never).pipe(createGunzip());
+    try {
+      for await (const chunk of gunzip) {
+        const value = chunk as Uint8Array;
+        archiveBytes += value.length;
+        tar.push(value);
+        onProgress?.({ files: files.length, archiveBytes });
+        if (tar.done) break;
+        if (archiveBytes > limits.maxArchiveBytes || files.length >= limits.maxFiles * CANDIDATE_FACTOR) {
+          truncated = true;
+          break;
+        }
       }
+      if (abort.signal.aborted) truncated = true;
+    } finally {
+      gunzip.destroy();
     }
+    if (abort.signal.aborted) return { ...selectDocs(files, limits), sha: tar.comment, truncated: true, archiveBytes };
     return { ...selectDocs(files, limits), sha: tar.comment, archiveBytes, truncated: truncated || files.length > limits.maxFiles };
   } catch (err) {
     if (abort.signal.aborted) {
@@ -275,12 +301,57 @@ function githubHeaders(): Record<string, string> {
   return h;
 }
 
+/** Fetches `paths` with 16 requests at a time, normalized; a file that fails is skipped. */
+async function fetchDocs(
+  paths: string[],
+  urlFor: (path: string) => string,
+  signal: AbortSignal,
+  onProgress?: (p: { files: number; archiveBytes: number }) => void,
+): Promise<{ files: RepoFile[]; bytes: number }> {
+  const files: RepoFile[] = [];
+  const decoder = new TextDecoder();
+  let next = 0;
+  let bytes = 0;
+  const worker = async () => {
+    while (next < paths.length && !signal.aborted) {
+      const path = paths[next++];
+      try {
+        const r = await fetch(urlFor(path), { signal, headers: { 'user-agent': 'helpdock' } });
+        if (!r.ok) continue;
+        const buf = new Uint8Array(await r.arrayBuffer());
+        bytes += buf.length;
+        files.push({ path, text: normalizeMarkdown(path, decoder.decode(buf)) });
+        onProgress?.({ files: files.length, archiveBytes: bytes });
+      } catch {
+        // One missing file is not worth failing the repository for.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 16 }, worker));
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return { files, bytes };
+}
+
+/** The candidate documentation files of a listing, best first within the limits (sized placeholders for selectDocs). */
+function chooseDocs(entries: Array<{ path: string; size: number }>, limits: ReadLimits) {
+  const candidates = entries
+    .filter((e) => isDocPath(e.path) && e.size > 0 && e.size <= limits.maxFileBytes)
+    .map((e) => ({ path: e.path, text: ' '.repeat(e.size) }));
+  return { chosen: selectDocs(candidates, limits).files.map((f) => f.path), candidates: candidates.length };
+}
+
+const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+
+// When the API last said 403/429, it is not asked again until its limit resets (or for ten minutes).
+let apiBlockedUntil = 0;
+
 /** Lists the repository with the git trees API, then fetches the best documentation files from raw.githubusercontent.com. */
 export async function readRepoViaApi(
   ref: RepoRef,
   limits: ReadLimits = DEFAULT_LIMITS,
   onProgress?: (p: { files: number; archiveBytes: number }) => void,
 ): Promise<RepoRead> {
+  if (Date.now() < apiBlockedUntil) throw new RateLimited('GitHub API limit reached earlier');
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), limits.timeoutMs);
   try {
@@ -291,63 +362,45 @@ export async function readRepoViaApi(
     if (res.status === 404 || res.status === 409) {
       throw new RepoNotFound(`${ref.owner}/${ref.repo} is not a public GitHub repository`);
     }
-    if (res.status === 403 || res.status === 429) throw new RateLimited(`GitHub API answered ${res.status}`);
+    if (res.status === 403 || res.status === 429) {
+      const reset = Number(res.headers.get('x-ratelimit-reset')) * 1000;
+      apiBlockedUntil = reset > Date.now() ? reset : Date.now() + 10 * 60 * 1000;
+      throw new RateLimited(`GitHub API answered ${res.status}`);
+    }
     if (!res.ok) throw new Error(`GitHub API answered ${res.status}`);
     const tree = (await res.json()) as { sha: string; truncated: boolean; tree: Array<{ path: string; type: string; size?: number }> };
-    // A tree too big for one response comes back truncated; the archive reads all of it.
+    // A tree too big for one response comes back truncated; the other ways read all of it.
     if (tree.truncated) throw new RateLimited('tree listing truncated');
-
-    const candidates = tree.tree
-      .filter((e) => e.type === 'blob' && isDocPath(e.path) && (e.size ?? 0) > 0 && (e.size ?? 0) <= limits.maxFileBytes)
-      .map((e) => ({ path: e.path, text: ' '.repeat(e.size ?? 0) })); // sized placeholders, for selectDocs
-    const chosen = selectDocs(candidates, limits).files.map((f) => f.path);
-
-    const files: RepoFile[] = [];
-    let next = 0;
-    let bytes = 0;
-    const decoder = new TextDecoder();
-    const worker = async () => {
-      while (next < chosen.length && !abort.signal.aborted) {
-        const path = chosen[next++];
-        const url = `https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/${tree.sha}/${path.split('/').map(encodeURIComponent).join('/')}`;
-        try {
-          const r = await fetch(url, { signal: abort.signal, headers: { 'user-agent': 'helpdock' } });
-          if (!r.ok) continue;
-          const buf = new Uint8Array(await r.arrayBuffer());
-          bytes += buf.length;
-          files.push({ path, text: normalizeMarkdown(path, decoder.decode(buf)) });
-          onProgress?.({ files: files.length, archiveBytes: bytes });
-        } catch {
-          // One missing file is not worth failing the repository for.
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: 16 }, worker));
-    files.sort((a, b) => a.path.localeCompare(b.path));
-    return {
-      files,
-      sha: tree.sha,
-      truncated: abort.signal.aborted || candidates.length > chosen.length,
-      archiveBytes: bytes,
-    };
+    const { chosen, candidates } = chooseDocs(
+      tree.tree.filter((e) => e.type === 'blob').map((e) => ({ path: e.path, size: e.size ?? 0 })),
+      limits,
+    );
+    const { files, bytes } = await fetchDocs(
+      chosen,
+      (path) => `https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/${tree.sha}/${encodePath(path)}`,
+      abort.signal,
+      onProgress,
+    );
+    return { files, sha: tree.sha, truncated: abort.signal.aborted || candidates > chosen.length, archiveBytes: bytes };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** The API path first; the archive when the API is rate limited, truncated or failing. A missing repository is final. */
+/** The GitHub API first, then the archive. A missing repository is final. */
 export async function readRepoDocs(
   ref: RepoRef,
   limits: ReadLimits = DEFAULT_LIMITS,
   onProgress?: (p: { files: number; archiveBytes: number }) => void,
 ): Promise<RepoRead> {
+  const name = `${ref.owner}/${ref.repo}`;
   try {
     return await readRepoViaApi(ref, limits, onProgress);
   } catch (err) {
     if (err instanceof RepoNotFound) throw err;
-    console.warn(`[github] ${ref.owner}/${ref.repo}: ${(err as Error).message}; reading the archive instead`);
-    return readRepoMarkdown(ref, { ...limits, timeoutMs: ARCHIVE_TIMEOUT_MS }, onProgress);
+    console.warn(`[github] ${name}: ${(err as Error).message}; reading the archive`);
   }
+  return readRepoMarkdown(ref, { ...limits, timeoutMs: ARCHIVE_TIMEOUT_MS }, onProgress);
 }
 
 // The archive streams the whole repository, code before docs for most layouts, and GitHub serves it slowly at times.

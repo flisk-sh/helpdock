@@ -46,7 +46,9 @@ describe('isDocPath', () => {
 describe('normalizeMarkdown', () => {
   it('turns front matter title into the heading', () => {
     expect(normalizeMarkdown('a.md', '---\ntitle: "Install"\nslug: x\n---\nRun it.')).toBe('# Install\n\nRun it.');
-    expect(normalizeMarkdown('a.md', '---\ntitle: Ignored\n---\n# Real\n\nBody')).toBe('# Real\n\nBody');
+    expect(normalizeMarkdown('a.md', '---\ntitle: Glossary\n---\n# A\n\n```sh\n# comment\n```\n\nBody')).toBe(
+      '# Glossary\n\n## A\n\n```sh\n# comment\n```\n\nBody',
+    );
   });
 
   it('strips MDX imports and JSX tags but keeps code fences and text', () => {

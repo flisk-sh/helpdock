@@ -52,6 +52,8 @@ const DEFAULTS: RepoCacheOptions = {
 
 export class BusyError extends Error {}
 
+const BUILD_DEADLINE_MS = 120_000;
+
 export function repoKey(ref: RepoRef): string {
   return `${ref.owner}/${ref.repo}`.toLowerCase();
 }
@@ -125,9 +127,13 @@ export class RepoCache {
     this.building++;
     entry.ready = (async () => {
       try {
-        const read = await this.opts.read(ref, undefined, (p) => {
-          entry.progress = p;
-        });
+        // A deadline over the reader's own limits: whatever happens inside, the build slot is freed.
+        const read = await Promise.race([
+          this.opts.read(ref, undefined, (p) => {
+            entry.progress = p;
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('build deadline passed')), BUILD_DEADLINE_MS)),
+        ]);
         if (read.files.length === 0) {
           entry.status = 'error';
           entry.error = 'This repository has no Markdown documentation to index.';

@@ -7,21 +7,21 @@
 
 /** The repositories the landing page offers, built at start (HELPDOCK_PREWARM) so they open at once. */
 export const EXAMPLE_REPOS = [
-  'astral-sh/uv',
+  'vercel/next.js',
+  'shadcn-ui/ui',
+  'ollama/ollama',
+  'supabase/supabase',
+  'n8n-io/n8n-docs',
   'modelcontextprotocol/modelcontextprotocol',
-  'pydantic/pydantic',
-  'openai/openai-agents-python',
-  'anthropics/claude-code',
-  'flisk-sh/flisk',
 ];
 
 const EXAMPLE_NOTES: Record<string, string> = {
-  'astral-sh/uv': 'Python package and project manager',
-  'modelcontextprotocol/modelcontextprotocol': 'The Model Context Protocol spec and docs',
-  'pydantic/pydantic': 'Data validation for Python',
-  'openai/openai-agents-python': 'OpenAI Agents SDK for Python',
-  'anthropics/claude-code': 'Agentic coding in your terminal',
-  'flisk-sh/flisk': 'Local inner loop for microservices and agents',
+  'vercel/next.js': 'The React framework for the web',
+  'shadcn-ui/ui': 'Components you copy into your app',
+  'ollama/ollama': 'Run open models on your own machine',
+  'supabase/supabase': 'The Postgres development platform',
+  'n8n-io/n8n-docs': 'Workflow automation, the n8n docs',
+  'modelcontextprotocol/modelcontextprotocol': 'The Model Context Protocol spec',
 };
 
 const css = String.raw`
@@ -178,11 +178,11 @@ function repoFromInput(v) {
 document.getElementById('open').onsubmit = function (e) {
   e.preventDefault();
   var repo = repoFromInput(document.getElementById('repo').value);
-  if (!repo) { document.getElementById('err').textContent = 'Enter a public GitHub repository, like astral-sh/uv or a github.com link.'; return; }
+  if (!repo) { document.getElementById('err').textContent = 'Enter a public GitHub repository, like vercel/next.js, or paste a github.com link.'; return; }
   location.href = '/' + repo + '/';
 };
 document.querySelectorAll('[data-host]').forEach(function (el) { el.textContent = location.host; });
-document.querySelectorAll('[data-mcp]').forEach(function (el) { el.textContent = 'claude mcp add --transport http uv ' + location.origin + '/astral-sh/uv/mcp'; });
+document.querySelectorAll('[data-mcp]').forEach(function (el) { el.textContent = 'claude mcp add --transport http nextjs ' + location.origin + '/vercel/next.js/mcp'; });
 `;
 
 function examples(): string {
@@ -213,13 +213,13 @@ export const landingPage = `<!doctype html>
     <span class="eyebrow">Open source · No signup · No API key</span>
     <h1>Any GitHub repo's docs, as a help center.</h1>
     <p class="lede">Search and browse a repository's Markdown, get answers quoted from the exact page with a link to it on GitHub, and give the same docs to your own AI over MCP.</p>
-    <div class="swap mono">https://<s>github.com</s><span class="arrow">→</span><b data-host>helpdock.flisk.sh</b>/astral-sh/uv</div>
+    <div class="swap mono">https://<s>github.com</s><span class="arrow">→</span><b data-host>helpdock.flisk.sh</b>/vercel/next.js</div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
   </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
-    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><pre class="mono" data-mcp>claude mcp add --transport http uv https://helpdock.flisk.sh/astral-sh/uv/mcp</pre></div>
+    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre></div>
     <div class="card"><h3>Your AI, not ours</h3><p>Helpdock never calls a model and needs no key. Under each answer, one click hands the question and the cited passages to your ChatGPT or Claude.</p></div>
   </section>
   <section class="how" id="how">
