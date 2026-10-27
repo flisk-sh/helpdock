@@ -1,0 +1,37 @@
+# Render Blueprint for helpdock.flisk.sh: render.com → New → Blueprint → flisk-sh/helpdock.
+# Render asks for the `sync: false` values (ANTHROPIC_API_KEY) when the Blueprint is created.
+services:
+  - type: web
+    name: helpdock
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Starter, not Free: the free plan sleeps when idle and has no pre-deploy command for migrations.
+    plan: starter
+    region: frankfurt
+    autoDeploy: true
+    healthCheckPath: /ready
+    preDeployCommand: migrate
+    domains:
+      - helpdock.flisk.sh
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: helpdock-db
+          property: connectionString
+      - key: HELPDOCK_PROXY
+        value: last-forwarded
+      - key: HELPDOCK_TURNS_PER_HOUR
+        value: "60"
+      - key: HELPDOCK_ADMIN_TOKEN
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+databases:
+  - name: helpdock-db
+    plan: basic-256mb
+    region: frankfurt
+    databaseName: helpdock
+    user: helpdock
+    # Reachable from Render services only.
+    ipAllowList: []

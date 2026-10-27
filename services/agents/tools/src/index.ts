@@ -56,7 +56,10 @@ function buildServer() {
       text(
         await agent('/docs', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...(process.env.HELPDOCK_ADMIN_TOKEN ? { authorization: `Bearer ${process.env.HELPDOCK_ADMIN_TOKEN}` } : {}),
+          },
           body: JSON.stringify({ source, markdown }),
         }),
       ),

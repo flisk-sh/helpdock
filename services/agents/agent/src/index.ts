@@ -1,8 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { Client } from 'pg';
+import { Pool } from 'pg';
 import { type Answer, buildPrompt, chunkMarkdown, citedAnswer, extractiveAnswer, type SearchHit } from './docs';
+import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { seedPages } from './seed-docs.generated';
 import { page } from './ui';
 
@@ -15,6 +16,12 @@ import { page } from './ui';
 //   HELPDOCK_MODEL    Claude model id (default claude-haiku-5-5)
 //   HELPDOCK_DOCS_DIR Markdown folder loaded on first start when help_docs is empty; without it, the pages packed
 //                     from seed-docs/ into src/seed-docs.generated.ts are loaded
+// Online use:
+//   HELPDOCK_ADMIN_TOKEN    bearer token for POST /docs. Without it, POST /docs is open in development (the MCP
+//                           add_doc tool uses it) and off when NODE_ENV=production
+//   HELPDOCK_PROXY          none (default), last-forwarded (Render) or cloudflare: where the client address comes
+//                           from, so rate limits key on the real visitor (see parseProxyMode in guard.ts)
+//   HELPDOCK_TURNS_PER_HOUR questions per client address per hour (default 60)
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
 
 const DURABILITY = 'postgres';
@@ -24,38 +31,49 @@ const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres
 
 const MODEL = process.env.HELPDOCK_MODEL || 'claude-haiku-5-5';
 const DOCS_DIR = process.env.HELPDOCK_DOCS_DIR;
+const ADMIN_TOKEN = process.env.HELPDOCK_ADMIN_TOKEN || undefined;
+const PROXY_MODE = parseProxyMode(process.env.HELPDOCK_PROXY);
+const MAX_QUESTION_CHARS = 500;
+const MAX_BODY_BYTES = 64 * 1024;
+const MAX_DOC_BYTES = 2 * 1024 * 1024;
+const turnLimit = new RateLimiter(Number(process.env.HELPDOCK_TURNS_PER_HOUR || 60), 60 * 60 * 1000);
+const readLimit = new RateLimiter(300, 60 * 1000);
+const pageHeaders = securityHeaders(page);
+const PRODUCTION = process.env.NODE_ENV === 'production';
+// A session keeps its last 100 messages, so one long-lived visitor cannot grow a row without bound.
+const MAX_SESSION_MESSAGES = 100;
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 interface Checkpoint {
   sessionId: string;
   messages: Array<{ role: 'user' | 'agent'; content: string; at: string; sources?: Answer['sources'] }>;
 }
 
-// The flisk_agent_sessions table is created by agent-migrator before this process starts.
-let client: Client | null = null;
-
-async function getClient(): Promise<Client> {
-  if (client) return client;
-  const c = new Client({ connectionString: DATABASE_URL });
-  await c.connect();
-  client = c;
-  return client;
-}
+// The flisk_agent_sessions table is created by agent-migrator before this process starts. A pool, so concurrent
+// requests never share a connection (an ingest transaction would otherwise take other requests' queries with it).
+const pool = new Pool({ connectionString: DATABASE_URL, max: Number(process.env.HELPDOCK_DB_POOL || 10) });
+pool.on('error', (err) => console.error('[agent] idle Postgres connection failed:', err.message));
 
 const store = {
   async ready(): Promise<boolean> {
     try {
-      const c = await getClient();
-      await c.query('SELECT 1');
+      await pool.query('SELECT 1');
       return true;
     } catch {
-      client = null;
       return false;
     }
   },
   async load(sessionId: string): Promise<Checkpoint> {
     try {
-      const c = await getClient();
-      const res = await c.query('SELECT messages FROM flisk_agent_sessions WHERE session_id = $1', [sessionId]);
+      const res = await pool.query('SELECT messages FROM flisk_agent_sessions WHERE session_id = $1', [sessionId]);
       if (res.rows.length > 0 && res.rows[0].messages) {
         return { sessionId, messages: res.rows[0].messages };
       }
@@ -66,8 +84,7 @@ const store = {
     }
   },
   async save(checkpoint: Checkpoint): Promise<void> {
-    const c = await getClient();
-    await c.query(
+    await pool.query(
       `INSERT INTO flisk_agent_sessions (session_id, messages, updated_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (session_id) DO UPDATE
@@ -76,13 +93,10 @@ const store = {
     );
   },
   async close(): Promise<void> {
-    if (client) {
-      try {
-        await client.end();
-      } catch (err) {
-        console.warn('[agent] closing the checkpoint client failed:', err);
-      }
-      client = null;
+    try {
+      await pool.end();
+    } catch (err) {
+      console.warn('[agent] closing the Postgres pool failed:', err);
     }
   },
 };
@@ -90,8 +104,7 @@ const store = {
 // The help_docs table is created by agent-migrator (prisma/migrations/*_help_docs).
 const docs = {
   async search(query: string, limit = 5): Promise<SearchHit[]> {
-    const c = await getClient();
-    const res = await c.query(
+    const res = await pool.query(
       `SELECT id, source, title, section,
               ts_headline('english', body, q, 'MaxWords=60, MinWords=25, MaxFragments=2, FragmentDelimiter=" … "') AS snippet,
               ts_rank(search, q) AS rank
@@ -104,8 +117,8 @@ const docs = {
     return res.rows.map((r) => ({ ...r, id: Number(r.id), rank: Number(r.rank) }));
   },
   async upsert(source: string, markdown: string): Promise<number> {
-    const c = await getClient();
     const chunks = chunkMarkdown(source, markdown);
+    const c = await pool.connect();
     await c.query('BEGIN');
     try {
       await c.query('DELETE FROM help_docs WHERE source = $1', [source]);
@@ -121,12 +134,13 @@ const docs = {
     } catch (err) {
       await c.query('ROLLBACK');
       throw err;
+    } finally {
+      c.release();
     }
     return chunks.length;
   },
   async count(): Promise<number> {
-    const c = await getClient();
-    const res = await c.query('SELECT count(*)::int AS n FROM help_docs');
+    const res = await pool.query('SELECT count(*)::int AS n FROM help_docs');
     return res.rows[0].n;
   },
 };
@@ -157,7 +171,6 @@ async function seedDocs(): Promise<void> {
       console.log(`[agent] seeded ${sections} sections from ${Object.keys(source.pages).length} pages (${source.from})`);
       return;
     } catch {
-      client = null;
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
@@ -206,40 +219,71 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req: IncomingMessage): Promise<any> {
+async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<any> {
+  const tooLarge = new HttpError(413, `body is over ${maxBytes} bytes`);
+  if (Number(req.headers['content-length']) > maxBytes) throw tooLarge;
+  // Read to the end even past the limit (keeping nothing): Bun's node:http drops the reply to a request whose body
+  // was left half read, and the client would see an empty 200 instead of the 413.
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size <= maxBytes) chunks.push(chunk as Buffer);
+  }
+  if (size > maxBytes) throw tooLarge;
   const raw = Buffer.concat(chunks).toString('utf8');
-  return raw ? JSON.parse(raw) : {};
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new HttpError(400, 'body is not JSON');
+  }
+}
+
+function tooMany(res: ServerResponse, retryAfter: number) {
+  res.setHeader('retry-after', String(retryAfter));
+  return sendJson(res, 429, { error: 'too many requests', retryAfter });
+}
+
+function canWriteDocs(req: IncomingMessage): boolean {
+  if (ADMIN_TOKEN) return isAdmin(req.headers.authorization, ADMIN_TOKEN);
+  return !PRODUCTION;
 }
 
 const server = createServer(async (req, res) => {
   inFlight++;
   res.on('close', () => inFlight--);
   const url = new URL(req.url ?? '/', 'http://localhost');
+  const ip = clientIp(req.headers, req.socket.remoteAddress, PROXY_MODE);
+  res.setHeader('x-content-type-options', 'nosniff');
 
   try {
     if (url.pathname === '/health') {
       return sendJson(res, 200, { status: 'ok', service: 'agent', draining });
     }
 
-    if (url.pathname === '/' && req.method === 'GET') {
+    if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
       res.statusCode = 200;
       res.setHeader('content-type', 'text/html; charset=utf-8');
-      return res.end(page);
+      res.setHeader('cache-control', 'public, max-age=300');
+      for (const [name, value] of Object.entries(pageHeaders)) res.setHeader(name, value);
+      return res.end(req.method === 'HEAD' ? undefined : page);
     }
 
     if (url.pathname === '/search' && req.method === 'GET') {
-      const q = url.searchParams.get('q') ?? '';
+      const wait = readLimit.hit(ip);
+      if (wait) return tooMany(res, wait);
+      const q = (url.searchParams.get('q') ?? '').slice(0, MAX_QUESTION_CHARS);
       if (!q.trim()) return sendJson(res, 400, { error: 'q is required' });
-      return sendJson(res, 200, { query: q, hits: await docs.search(q, Number(url.searchParams.get('limit') || 5)) });
+      const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 5, 1), 20);
+      return sendJson(res, 200, { query: q, hits: await docs.search(q, limit) });
     }
 
     // Add or replace one page: { "source": "billing.md", "markdown": "# Billing ..." }.
     if (url.pathname === '/docs' && req.method === 'POST') {
-      const body = await readJson(req);
+      if (!canWriteDocs(req)) return sendJson(res, 403, { error: 'adding pages needs the admin token' });
+      const body = await readJson(req, MAX_DOC_BYTES);
       const source = String(body.source ?? '').trim();
-      if (!source || typeof body.markdown !== 'string') {
+      if (!source || source.length > 512 || typeof body.markdown !== 'string') {
         return sendJson(res, 400, { error: 'source and markdown are required' });
       }
       return sendJson(res, 200, { source, sections: await docs.upsert(source, body.markdown) });
@@ -259,13 +303,20 @@ const server = createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'x-session-id header is required (1-128 letters, digits, - or _)' });
       }
       const body = await readJson(req);
-      const input = String(body.input ?? '');
+      const input = String(body.input ?? '').trim();
+      if (!input) return sendJson(res, 400, { error: 'input is required' });
+      if (input.length > MAX_QUESTION_CHARS) {
+        return sendJson(res, 400, { error: `input is over ${MAX_QUESTION_CHARS} characters` });
+      }
+      const wait = turnLimit.hit(ip);
+      if (wait) return tooMany(res, wait);
       const checkpoint = await store.load(sessionId);
       checkpoint.messages.push({ role: 'user', content: input, at: new Date().toISOString() });
       const { reply, sources } = await runTurn(checkpoint, input);
       checkpoint.messages.push({ role: 'agent', content: reply, sources, at: new Date().toISOString() });
+      checkpoint.messages = checkpoint.messages.slice(-MAX_SESSION_MESSAGES);
       await store.save(checkpoint);
-      return sendJson(res, 200, { sessionId, reply, sources, turns: checkpoint.messages.length / 2 });
+      return sendJson(res, 200, { sessionId, reply, sources, turns: Math.ceil(checkpoint.messages.length / 2) });
     }
 
     if (url.pathname === '/session' && req.method === 'GET') {
@@ -277,12 +328,13 @@ const server = createServer(async (req, res) => {
 
     return sendJson(res, 404, { error: 'not_found' });
   } catch (error) {
+    if (error instanceof HttpError) return sendJson(res, error.status, { error: error.message });
     console.error('[agent] request failed:', error);
     return sendJson(res, 500, { error: 'internal_error' });
   }
 });
 
-// Bind beyond loopback: Traefik reaches the container over the Docker network.
+// Bind beyond loopback: Traefik (or Render's proxy) reaches the container over the network.
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n🤖 agent agent on http://localhost:' + PORT + ' (durability: ' + DURABILITY + ')');
   void seedDocs();

@@ -28,6 +28,10 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
   -d "$(jq -n --arg m "$(cat billing.md)" '{source:"billing.md", markdown:$m}')"
 ```
 
+## Online
+
+The online help center is at **https://helpdock.flisk.sh** (Render web service + Render Postgres, from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)). [DEPLOY.md](DEPLOY.md) has the steps, the DNS record and the limits.
+
 ## API
 
 | Route | What it does |
@@ -35,9 +39,9 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
 | `GET /` | The help center page |
 | `POST /turn` | `{"input": "question"}` with an `x-session-id` header → `{reply, sources}`; the session is checkpointed in Postgres |
 | `GET /search?q=` | Ranked sections with snippets |
-| `POST /docs` | `{"source", "markdown"}` adds or replaces one page |
+| `POST /docs` | `{"source", "markdown"}` adds or replaces one page; needs `authorization: Bearer $HELPDOCK_ADMIN_TOKEN` when the token is set, and is off in production without it |
 
-Settings: `ANTHROPIC_API_KEY` (optional), `HELPDOCK_MODEL` (default `claude-haiku-5-5`), `HELPDOCK_DOCS_DIR`.
+Settings: `ANTHROPIC_API_KEY` (optional), `HELPDOCK_MODEL` (default `claude-haiku-5-5`), `HELPDOCK_DOCS_DIR`, and for online use `HELPDOCK_ADMIN_TOKEN`, `HELPDOCK_PROXY`, `HELPDOCK_TURNS_PER_HOUR` (see the header of `services/agents/agent/src/index.ts`).
 
 ---
 

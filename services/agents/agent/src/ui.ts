@@ -32,6 +32,7 @@ export const page = `<!doctype html>
   .src b { color:var(--accent); margin-right:6px; }
   .thinking { color:var(--muted); }
   footer { margin-top:48px; font-size:13px; color:var(--muted); }
+  footer a { color:var(--accent); }
 </style>
 </head>
 <body>
@@ -41,7 +42,7 @@ export const page = `<!doctype html>
   <form id="f"><input id="q" autocomplete="off" placeholder="e.g. How do I fix a port that is already in use?" autofocus><button id="go">Ask</button></form>
   <div class="ideas" id="ideas"></div>
   <div id="log"></div>
-  <footer>Helpdock runs on your machine. Built and run with <a href="https://github.com/flisk-sh/flisk">Flisk</a>.</footer>
+  <footer>Open source: <a href="https://github.com/flisk-sh/helpdock">flisk-sh/helpdock</a>. Built and run with <a href="https://github.com/flisk-sh/flisk">Flisk</a>.</footer>
 </main>
 <script>
 const base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
