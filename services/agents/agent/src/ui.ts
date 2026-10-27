@@ -65,7 +65,7 @@ footer.foot { color:var(--muted); font-size:14px; padding:36px 0 48px; display:f
 
 // A small Markdown renderer for excerpts and pages. Everything is HTML-escaped first, so text from a repository can
 // never become markup; links are kept only for http(s) URLs or paths resolved against the file on GitHub.
-const markdownJs = String.raw`
+export const markdownJs = String.raw`
 function escHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
 function safeHref(raw, base) {
   var href = raw.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
@@ -75,16 +75,26 @@ function safeHref(raw, base) {
     return escHtml(u.href);
   } catch (e) { return null; }
 }
-function inlineMd(text, base) {
-  var parts = escHtml(text).split(/(\x60[^\x60]+\x60)/g);
-  return parts.map(function (p) {
+// Code spans in already-escaped text; with emphasis, bold and italics outside them.
+function codeSpans(escaped, emphasis) {
+  return escaped.split(/(\x60[^\x60]+\x60)/g).map(function (p) {
     if (/^\x60[^\x60]+\x60$/.test(p)) return '<code>' + p.slice(1, -1) + '</code>';
-    return p
-      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-      .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, function (m, label, href) { var u = safeHref(href, base); return u ? '<a href="' + u + '" target="_blank" rel="noopener">' + label + '</a>' : label; })
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
+    if (!emphasis) return p;
+    return p.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
   }).join('');
+}
+// Links first (their label may hold a code span, like a command name), kept aside as placeholders while code spans and
+// emphasis are rendered, then put back.
+function inlineMd(text, base) {
+  var links = [];
+  var s = escHtml(text)
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, function (m, label, href) {
+      var u = safeHref(href, base), l = codeSpans(label, false);
+      links.push(u ? '<a href="' + u + '" target="_blank" rel="noopener">' + l + '</a>' : l);
+      return '\x00' + (links.length - 1) + '\x00';
+    });
+  return codeSpans(s, true).replace(/\x00(\d+)\x00/g, function (m, n) { return links[Number(n)]; });
 }
 function renderMd(src, base) {
   var lines = String(src || '').replace(/\r\n/g, '\n').split('\n'), out = [], i = 0;
