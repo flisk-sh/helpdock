@@ -344,6 +344,7 @@ function boot() {
     var hash = decodeURIComponent(location.hash.slice(1));
     if (hash.indexOf('page=') === 0) openPage(hash.slice(5));
     else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
+    else if (hash === 'mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
     else $('q').focus();
   }).catch(function (e) {
     setStatus('Unavailable', true);
