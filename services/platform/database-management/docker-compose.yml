@@ -8,28 +8,28 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: flisk_agent_stack_postgres
+    container_name: helpdock_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: flisk_agent_stack
+      POSTGRES_USER: helpdock
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: postgres
     ports:
       - "${FLISK_BIND_ADDRESS:-127.0.0.1}:${FLISK_POSTGRES_PORT:-15432}:5432"
     volumes:
-      - flisk_agent_stack_postgres_data:/var/lib/postgresql/data
+      - helpdock_postgres_data:/var/lib/postgresql/data
     networks:
       - database
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U flisk_agent_stack -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U helpdock -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 20
 
 networks:
   database:
-    name: flisk_agent_stack_database
+    name: helpdock_database
     external: true
 
 volumes:
-  flisk_agent_stack_postgres_data:
+  helpdock_postgres_data:

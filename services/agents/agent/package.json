@@ -8,7 +8,8 @@
     "start": "bun run dist/index.js",
     "test": "vitest",
     "lint": "biome check .",
-    "lint:fix": "biome check . --write"
+    "lint:fix": "biome check . --write",
+    "seed:pack": "bun scripts/pack-seed-docs.ts"
   },
   "dependencies": {
     "pg": "^8.13.0"
