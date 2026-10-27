@@ -8,7 +8,6 @@
 // months old, so it served docs that no longer exist.) Both stop at fixed limits so a huge repository cannot
 // exhaust a small instance. The hosts are fixed and the owner and name are validated, so a request can never make the
 // server fetch an address of its choosing.
-import { Readable } from 'node:stream';
 import { createGunzip } from 'node:zlib';
 import { TarStream } from './tar';
 
@@ -48,6 +47,14 @@ export const DEFAULT_LIMITS: ReadLimits = {
   // GitHub builds archives of very large repositories slowly; index what has arrived by then.
   timeoutMs: 25_000,
 };
+
+/**
+ * Process memory (RSS) at which an archive read stops and keeps what it has. Bun's fetch reads the network ahead of a
+ * slow consumer, so on a small instance (Render free: 512 MB, 0.1 CPU) a large archive piled up until the process was
+ * killed. HELPDOCK_MEMORY_MB sets it (default 300).
+ */
+export const MEMORY_LIMIT_MB = Number(process.env.HELPDOCK_MEMORY_MB || 300);
+export const rssMb = () => process.memoryUsage().rss / 1024 / 1024;
 
 // Candidates read before choosing: more than the limits, so the best files can be kept (see docPriority).
 const CANDIDATE_FACTOR = 3;
@@ -106,6 +113,8 @@ export function docPriority(path: string): number {
   if (/(^|\/)(agents|claude|gemini|contributing|security|support|pull_request_template|issue_template)[^/]*\.mdx?$/.test(lower)) score -= 4;
   // Folders of prompts, skills and agent instructions are tooling for contributors' coding agents.
   if (/(^|\/)(agents?|prompts?|skills?|\.?claude|copilot)\//.test(lower)) score -= 4;
+  // How to contribute to the project is for its maintainers, not for people using it.
+  if (/(^|\/)contributing\//.test(lower)) score -= 4;
   // Example and test folders inside the docs (docs/examples/) are documentation; elsewhere they are code samples.
   if (!inDocs && /(^|\/)(examples?|samples?|tests?|benchmarks?|scripts?)\//.test(lower)) score -= 2;
   return score - Math.max(0, depth - 3);
@@ -131,7 +140,8 @@ export function normalizeMarkdown(path: string, text: string): string {
       if (!inFence && /^(import|export)\s/.test(line)) continue;
       out.push(inFence ? line : line.replace(/<\/?[A-Z][\w.]*(\s[^<>]*)?\/?>/g, ''));
     }
-    body = out.join('\n');
+    // MDX comments, {/* ... */}, can span lines.
+    body = out.join('\n').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   }
   body = mkdocsToMarkdown(body);
   if (title) {
@@ -248,23 +258,60 @@ export async function readRepoMarkdown(
       },
     });
 
-    // node:zlib rather than DecompressionStream, which older Bun releases do not have.
-    gunzip = Readable.fromWeb(res.body as never).pipe(createGunzip());
+    // node:zlib (DecompressionStream is missing in older Bun releases), fed by hand with backpressure: the next
+    // network chunk is read only once gunzip has drained, and its output goes straight into the tar reader. Piping
+    // the web stream into it instead let Bun read a large archive ahead into memory, and a 512 MB instance died on it.
+    const gz = createGunzip();
+    gunzip = gz;
+    const untar = tar;
+    let stop = false;
+    gz.on('data', (value: Uint8Array) => {
+      if (stop) return;
+      archiveBytes += value.length;
+      untar.push(value);
+      onProgress?.({ files: files.length, archiveBytes });
+      if (untar.done) stop = true;
+      if (archiveBytes > limits.maxArchiveBytes || files.length >= limits.maxFiles * CANDIDATE_FACTOR) {
+        truncated = true;
+        stop = true;
+      }
+    });
+    const ended = new Promise<void>((resolve) => {
+      gz.once('end', resolve);
+      gz.once('close', resolve);
+      gz.once('error', () => resolve());
+    });
+    const reader = res.body.getReader();
+    let compressed = 0;
     try {
-      for await (const chunk of gunzip) {
-        const value = chunk as Uint8Array;
-        archiveBytes += value.length;
-        tar.push(value);
-        onProgress?.({ files: files.length, archiveBytes });
-        if (tar.done) break;
-        if (archiveBytes > limits.maxArchiveBytes || files.length >= limits.maxFiles * CANDIDATE_FACTOR) {
+      while (!stop && !abort.signal.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        compressed += value.length;
+        if (compressed > limits.maxArchiveBytes / 4 || rssMb() > MEMORY_LIMIT_MB) {
+          if (rssMb() > MEMORY_LIMIT_MB) console.warn(`[github] ${ref.owner}/${ref.repo}: memory at ${Math.round(rssMb())} MB, keeping what was read`);
           truncated = true;
           break;
         }
+        // Wait for gunzip to drain, or for the time limit: the timer destroys gz, and a destroyed stream never drains.
+        if (!gz.write(value)) {
+          await new Promise<void>((resolve) => {
+            gz.once('drain', resolve);
+            gz.once('close', resolve);
+            gz.once('error', () => resolve());
+            abort.signal.addEventListener('abort', () => resolve(), { once: true });
+          });
+        }
+      }
+      if (!stop && !abort.signal.aborted) {
+        gz.end();
+        await ended;
       }
       if (abort.signal.aborted) truncated = true;
     } finally {
-      gunzip.destroy();
+      stop = true;
+      void reader.cancel().catch(() => {});
+      gz.destroy();
     }
     if (abort.signal.aborted) return { ...selectDocs(files, limits), sha: tar.comment, truncated: true, archiveBytes };
     return { ...selectDocs(files, limits), sha: tar.comment, archiveBytes, truncated: truncated || files.length > limits.maxFiles };

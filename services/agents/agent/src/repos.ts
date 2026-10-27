@@ -1,7 +1,7 @@
 // Help centers for public GitHub repositories, built on demand: /owner/repo reads the repository's Markdown from
 // GitHub and indexes it in its own in-memory SQLite database. The URL is the whole state, so nothing needs saving: a
 // restarted (or sleeping) instance rebuilds a repository on its next visit, in a few seconds.
-import { fileUrl, type RepoRef, RepoNotFound, readRepoDocs } from './github';
+import { fileUrl, MEMORY_LIMIT_MB, type RepoRef, RepoNotFound, readRepoDocs, rssMb } from './github';
 import type { Stores } from './store';
 import { createSqliteStores } from './store-sqlite';
 
@@ -43,7 +43,7 @@ export interface RepoCacheOptions {
 const DEFAULTS: RepoCacheOptions = {
   maxBytes: 48 * 1024 * 1024,
   maxRepos: 24,
-  maxBuilds: 2,
+  maxBuilds: Number(process.env.HELPDOCK_MAX_BUILDS || 2),
   ttlMs: 6 * 60 * 60 * 1000,
   read: readRepoDocs,
   partialTtlMs: 10 * 60 * 1000,
@@ -52,7 +52,8 @@ const DEFAULTS: RepoCacheOptions = {
 
 export class BusyError extends Error {}
 
-const BUILD_DEADLINE_MS = 120_000;
+// Over the archive reader's 60 s limit with room for a CPU-starved instance to wind down and index what it read.
+const BUILD_DEADLINE_MS = 180_000;
 
 export function repoKey(ref: RepoRef): string {
   return `${ref.owner}/${ref.repo}`.toLowerCase();
@@ -87,7 +88,9 @@ export class RepoCache {
       // A failed build is retried after a minute, not on every request.
       if (existing.status !== 'error' || now - existing.builtAt < 60_000) return existing;
     }
-    if (this.building >= this.opts.maxBuilds) {
+    // No new build while memory is already high: evict first, and refuse if that was not enough.
+    if (rssMb() > MEMORY_LIMIT_MB * 0.8) this.evict(true);
+    if (this.building >= this.opts.maxBuilds || rssMb() > MEMORY_LIMIT_MB * 0.8) {
       if (existing?.status === 'ready') return existing; // stale but usable
       throw new BusyError('busy');
     }
@@ -151,13 +154,15 @@ export class RepoCache {
           status: 'ready' as const,
           stores,
           sha: read.sha,
-          files: read.files.length,
+          // Pages with content: a file of only front matter or components indexes nothing.
+          files: (await stores.docs.pages()).length,
           sections,
           bytes,
           truncated: read.truncated,
           builtAt: this.opts.now(),
         });
-        console.log(`[repos] ${key}: ${read.files.length} files, ${sections} sections${read.truncated ? ' (truncated)' : ''}`);
+        const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
+        console.log(`[repos] ${key}: ${read.files.length} files, ${sections} sections${read.truncated ? ' (truncated)' : ''}, rss ${rss} MB`);
         return entry;
       } catch (err) {
         entry.status = entry.stores ? 'ready' : 'error';
@@ -173,12 +178,15 @@ export class RepoCache {
     return entry;
   }
 
-  private evict() {
+  /** Drops least recently used repositories over the limits; with `memory`, also the oldest one under memory pressure. */
+  private evict(memory = false) {
     const ready = [...this.entries.values()].filter((e) => e.status !== 'building').sort((a, b) => a.usedAt - b.usedAt);
     let { bytes } = this.stats();
     let count = this.entries.size;
+    let freeOne = memory;
     for (const e of ready) {
-      if (bytes <= this.opts.maxBytes && count <= this.opts.maxRepos) break;
+      if (!freeOne && bytes <= this.opts.maxBytes && count <= this.opts.maxRepos) break;
+      freeOne = false;
       this.entries.delete(e.key);
       void e.stores?.store.close();
       bytes -= e.bytes;

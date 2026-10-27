@@ -90,7 +90,9 @@ export function createPostgresStores(databaseUrl: string): Stores {
       },
       async pages() {
         const res = await pool.query(
-          'SELECT source, min(title) AS title, count(*)::int AS sections FROM help_docs GROUP BY source ORDER BY source',
+          `SELECT source, min(title) AS title, count(*)::int AS sections,
+                  (SELECT substr(body, 1, 1200) FROM help_docs l WHERE l.source = h.source ORDER BY id LIMIT 1) AS lead
+           FROM help_docs h GROUP BY source ORDER BY source`,
         );
         return res.rows;
       },

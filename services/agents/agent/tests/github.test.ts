@@ -54,6 +54,7 @@ describe('normalizeMarkdown', () => {
   it('strips MDX imports and JSX tags but keeps code fences and text', () => {
     const mdx = "import { Tab } from 'x'\n\n<Tabs>\n<Tab title=\"npm\">Install with npm</Tab>\n</Tabs>\n\n```js\nimport a from 'b'\n<Foo />\n```";
     expect(normalizeMarkdown('a.mdx', mdx)).toBe("Install with npm\n\n\n```js\nimport a from 'b'\n<Foo />\n```");
+    expect(normalizeMarkdown('a.mdx', '{/* The content is shared.\n Keep it. */}\n\nReal text.')).toBe('Real text.');
   });
 });
 
@@ -72,6 +73,7 @@ describe('choosing files', () => {
     expect(docPriority('docs/install.md')).toBeGreaterThan(docPriority('packages/x/README.md'));
     expect(docPriority('packages/x/README.md')).toBeGreaterThan(docPriority('AGENTS.md'));
     expect(docPriority('docs/install.md')).toBeGreaterThan(docPriority('agents/prompts/fix-bug.md'));
+    expect(docPriority('contributing/docs/guide.md')).toBeLessThan(4);
     expect(docPriority('docs/a.md')).toBeGreaterThan(docPriority('examples/demo/README.md'));
     expect(docPriority('docs/examples/custom.md')).toBe(docPriority('docs/custom.md'));
   });

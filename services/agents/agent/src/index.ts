@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { aiPrompt, type Answer, extractiveAnswer, type LinkFor } from './docs';
+import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { docPriority, parseRepoPath, type RepoRef } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
@@ -229,7 +229,11 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   }
 
   if (sub === 'pages' && req.method === 'GET') {
-    const pages = (await ws.docs.pages()).map((p) => ({ ...p, priority: docPriority(p.source) }));
+    const pages = (await ws.docs.pages()).map(({ lead, ...p }) => ({
+      ...p,
+      priority: docPriority(p.source),
+      summary: summarize(lead ?? ''),
+    }));
     return sendJson(res, 200, { pages });
   }
 

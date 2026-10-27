@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
+import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -172,5 +172,19 @@ describe('dedupeHits', () => {
   it('keeps a clearly better ranked copy even if its path is older', () => {
     const out = dedupeHits([hit(1, { title: 'T', section: 'S', source: 'a/old.md', rank: 10 }), hit(2, { title: 'T', section: 'S', source: 'b/new.md', rank: 5 })]);
     expect(out.map((h) => h.source)).toEqual(['a/old.md']);
+  });
+});
+
+describe('summarize', () => {
+  it('takes the first real paragraph as plain text', () => {
+    expect(summarize('```sh\nnpm i\n```\n\nUse the [App Router](./app.md) to build **fast** apps with `next`.\n\nMore.')).toBe(
+      'Use the App Router to build fast apps with next.',
+    );
+  });
+
+  it('cuts at a sentence or a word', () => {
+    expect(summarize('One two three. Four five six seven eight nine ten.', 20)).toBe('One two three.');
+    expect(summarize('Alpha beta gamma delta epsilon zeta', 20)).toBe('Alpha beta gamma…');
+    expect(summarize('| a | b |\n|---|---|')).toBe('');
   });
 });

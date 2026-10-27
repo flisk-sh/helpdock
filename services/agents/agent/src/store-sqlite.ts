@@ -63,7 +63,9 @@ export function createSqliteStores(path: string): Stores {
              ORDER BY rank DESC LIMIT ?`,
           )
           .all(match, limit * 3);
-        const boost = (h: SearchHit) => h.rank * (1 + 0.12 * Math.max(-4, Math.min(6, docPriority(h.source))));
+        // A stub ("See Proxy.") answers nothing on its own: sections under 80 characters count for half.
+        const boost = (h: SearchHit) =>
+          h.rank * (1 + 0.12 * Math.max(-4, Math.min(6, docPriority(h.source)))) * ((h.body?.length ?? 80) < 80 ? 0.5 : 1);
         return hits
           .map((h) => ({ h, score: boost(h) }))
           .sort((a, b) => b.score - a.score)
@@ -80,8 +82,10 @@ export function createSqliteStores(path: string): Stores {
       },
       async pages() {
         return db
-          .query<{ source: string; title: string; sections: number }>(
-            'SELECT source, min(title) AS title, count(*) AS sections FROM help_docs GROUP BY source ORDER BY source',
+          .query<{ source: string; title: string; sections: number; lead: string }>(
+            `SELECT source, min(title) AS title, count(*) AS sections,
+                    (SELECT substr(body, 1, 1200) FROM help_docs l WHERE l.source = h.source ORDER BY rowid LIMIT 1) AS lead
+             FROM help_docs h GROUP BY source ORDER BY source`,
           )
           .all();
       },

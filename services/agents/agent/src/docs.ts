@@ -298,3 +298,20 @@ export function queryWords(question: string): string[] {
   const words = (question.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 1 && !STOP_WORDS.has(w));
   return [...new Set(words)].slice(0, 32);
 }
+
+/** A page's lead as one plain sentence or two, for the page cards: its first paragraph, Markdown removed. */
+export function summarize(body: string, max = 160): string {
+  const lead = blocks(body).find((b) => !/^(```|~~~|\||<|>|!\[|[-*+] |\d+\. )/.test(b) && /[a-z]{3}/i.test(b)) ?? '';
+  const text = lead
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[`*_]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const end = cut.lastIndexOf('. ');
+  return end > max / 2 ? cut.slice(0, end + 1) : `${cut.slice(0, cut.lastIndexOf(' ')).trimEnd()}…`;
+}
