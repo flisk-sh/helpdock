@@ -9,7 +9,12 @@ Your docs, as a help center that answers with sources. Point it at a folder of M
 
 ## Run it
 
+Needs Docker, Tilt and the [Flisk CLI](https://github.com/flisk-sh/flisk).
+
 ```bash
+git clone https://github.com/flisk-sh/helpdock.git
+cd helpdock
+flisk project --yes
 flisk up agents
 flisk status          # the agent URL, e.g. http://api.helpdock.localhost:8082/api/agent
 ```

@@ -47,7 +47,7 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 
 ## Before launch
 
-- [ ] Push to a public repo (for example `flisk-sh/helpdock`) and replace `origin`, which still points at the agent-stack template.
+- [x] Public repo: https://github.com/flisk-sh/helpdock (published 2026-10-27).
 - [ ] Record the gallery from a real run; no mockups.
 - [ ] Ask Product Hunt support whether a product built on Flisk, launched by Flisk's makers, counts as separate from the Flisk listing.
 - [ ] Post the night-before note to the people who already use Flisk (no vote ask).
