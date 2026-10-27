@@ -6,6 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { type Answer, dedupeHits, extractiveAnswer, type LinkFor, type SearchHit, toSources } from './docs';
+import { htmlToMarkdown } from './github';
 
 export interface McpDeps {
   /** Whose docs these are: "Flisk docs" or "owner/repo". */
@@ -30,7 +31,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     },
     async ({ query, limit }) => {
       const hits = dedupeHits(await deps.search(query, (limit ?? 5) * 2)).slice(0, limit ?? 5);
-      return text({ query, hits: toSources(query, hits, deps.link) });
+      const sources = toSources(query, hits, deps.link, htmlToMarkdown).map(({ excerpt: _md, ...src }) => src);
+      return text({ query, hits: sources });
     },
   );
 
@@ -44,8 +46,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ question }) => {
-      const answer: Answer = extractiveAnswer(question, await deps.search(question, 10), deps.link);
-      return text(answer);
+      const answer: Answer = extractiveAnswer(question, await deps.search(question, 10), deps.link, htmlToMarkdown);
+      return text({ reply: answer.reply, sources: answer.sources.map(({ excerpt: _md, ...src }) => src) });
     },
   );
 

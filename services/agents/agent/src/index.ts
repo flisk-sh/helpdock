@@ -2,7 +2,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
-import { docPriority, parseRepoPath, type RepoRef } from './github';
+import { renderMarkdown } from '@flisk-sh/md2html';
+import { docPriority, htmlToMarkdown, parseRepoPath, type RepoRef } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
 import { BusyError, RepoCache, type RepoEntry, repoLink } from './repos';
@@ -120,8 +121,10 @@ const rootWorkspace: Workspace = { docs, store, label: process.env.HELPDOCK_LABE
 // A turn: search the docs and answer with the best passages, each cited. No model and no outside API: the reply
 // is built from the docs alone, so the same question always gets the same answer.
 async function runTurn(ws: Workspace, input: string, site: string): Promise<Answer & { prompt: string }> {
-  const answer = extractiveAnswer(input, await ws.docs.search(input, 10), ws.link);
-  return { ...answer, prompt: aiPrompt(input, answer.sources, site + ws.base.slice(1)) };
+  const answer = extractiveAnswer(input, await ws.docs.search(input, 10), ws.link, htmlToMarkdown);
+  // Each source also comes as HTML (md2html: sanitized, links and images resolved against the file on GitHub).
+  const sources = answer.sources.map((src) => ({ ...src, html: renderMarkdown(src.excerpt, { baseUrl: src.url, headingIds: false }) }));
+  return { ...answer, sources, prompt: aiPrompt(input, answer.sources, site + ws.base.slice(1)) };
 }
 
 // The public address of the site, for the prompt that visitors take to their own AI and the MCP address the page
@@ -169,6 +172,18 @@ function tooMany(res: ServerResponse, retryAfter: number) {
 function canWriteDocs(req: IncomingMessage): boolean {
   if (ADMIN_TOKEN) return isAdmin(req.headers.authorization, ADMIN_TOKEN);
   return !PRODUCTION;
+}
+
+// The page list with priorities and summaries, built once per index and kept until the index changes (a summary per
+// page is real work: 470 of them took 2.7 s per request on a 0.1 CPU instance). Keyed by the store, checked by count.
+const pageLists = new WeakMap<DocStore, { count: number; pages: unknown[] }>();
+async function pageList(docs: DocStore) {
+  const count = await docs.count();
+  const cached = pageLists.get(docs);
+  if (cached && cached.count === count) return cached.pages;
+  const pages = (await docs.pages()).map(({ lead, ...p }) => ({ ...p, priority: docPriority(p.source), summary: summarize(lead ?? '') }));
+  pageLists.set(docs, { count, pages });
+  return pages;
 }
 
 function sendPage(req: IncomingMessage, res: ServerResponse, html: string, headers: Record<string, string>) {
@@ -229,19 +244,17 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   }
 
   if (sub === 'pages' && req.method === 'GET') {
-    const pages = (await ws.docs.pages()).map(({ lead, ...p }) => ({
-      ...p,
-      priority: docPriority(p.source),
-      summary: summarize(lead ?? ''),
-    }));
-    return sendJson(res, 200, { pages });
+    res.setHeader('cache-control', 'public, max-age=60');
+    return sendJson(res, 200, { pages: await pageList(ws.docs) });
   }
 
   if (sub === 'page' && req.method === 'GET') {
     const source = url.searchParams.get('source') ?? '';
     const found = source ? await ws.docs.page(source) : null;
     if (!found) return sendJson(res, 404, { error: 'no such page' });
-    return sendJson(res, 200, { ...found, url: ws.link?.({ source, section: '' } as never) });
+    const fileLink = ws.link?.({ source, section: '' } as never);
+    const sections = found.sections.map((sec) => ({ ...sec, html: renderMarkdown(sec.body, { baseUrl: fileLink, headingIds: false }) }));
+    return sendJson(res, 200, { ...found, sections, url: fileLink });
   }
 
   if (sub === 'search' && req.method === 'GET') {
@@ -397,10 +410,14 @@ async function prewarm() {
     .map((r) => parseRepoPath(`/${r.trim()}`))
     .filter((r): r is RepoRef & { rest: string } => r !== null);
   for (const ref of list) {
+    // Visitors first: wait while any build runs, so pre-building never takes the slot a visitor needs.
+    while (repos.stats().building > 0) await new Promise((r) => setTimeout(r, 2000));
     try {
-      await repos.get(ref).ready;
+      const entry = repos.get(ref);
+      await entry.ready;
+      if (entry.stores) await pageList(entry.stores.docs); // warm the page list too
     } catch {
-      // Busy: a visitor's build is running; the example builds on its first visit instead.
+      // Busy or over memory: the example builds on its first visit instead.
     }
   }
 }

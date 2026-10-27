@@ -10,7 +10,7 @@ export const EXAMPLE_REPOS = [
   'vercel/next.js',
   'shadcn-ui/ui',
   'ollama/ollama',
-  'supabase/supabase',
+  'excalidraw/excalidraw',
   'n8n-io/n8n-docs',
   'modelcontextprotocol/modelcontextprotocol',
 ];
@@ -19,7 +19,7 @@ const EXAMPLE_NOTES: Record<string, string> = {
   'vercel/next.js': 'The React framework for the web',
   'shadcn-ui/ui': 'Components you copy into your app',
   'ollama/ollama': 'Run open models on your own machine',
-  'supabase/supabase': 'The Postgres development platform',
+  'excalidraw/excalidraw': 'The virtual whiteboard for sketching diagrams',
   'n8n-io/n8n-docs': 'Workflow automation, the n8n docs',
   'modelcontextprotocol/modelcontextprotocol': 'The Model Context Protocol spec',
 };
@@ -59,86 +59,19 @@ input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .md pre code { background:none; padding:0; font-size:inherit; }
 .md blockquote { margin:0 0 .7em; padding:2px 12px; border-left:3px solid var(--line); color:var(--muted); }
 .md table { border-collapse:collapse; font-size:14px; margin:0 0 .8em; display:block; overflow:auto; }
+.md img { max-width:100%; height:auto; vertical-align:middle; }
+.md p[align="center"], .md div[align="center"], .md h1[align="center"], .md h2[align="center"], .md h3[align="center"] { text-align:center; }
+.md h1, .md h2, .md h3, .md h5, .md h6 { margin:1em 0 .4em; line-height:1.25; }
+.md h1 { font-size:22px; } .md h2 { font-size:19px; } .md h3 { font-size:16.5px; } .md h5, .md h6 { font-size:14px; }
+.md hr { border:0; border-top:1px solid var(--line); margin:1.2em 0; }
+.md details { border:1px solid var(--line); border-radius:10px; padding:6px 12px; margin:0 0 .8em; }
+.md details > summary { cursor:pointer; font-weight:600; }
+.md kbd { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.85em; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:.05em .4em; }
+.md li > input[type="checkbox"] { margin:0 .4em 0 0; vertical-align:middle; }
+.md blockquote.alert { border-left-color:var(--accent); color:var(--ink); background:var(--tint); border-radius:0 8px 8px 0; padding:8px 12px; }
+.md blockquote.alert-warning, .md blockquote.alert-caution { border-left-color:var(--warn); }
 .md th, .md td { border:1px solid var(--line); padding:5px 9px; text-align:left; vertical-align:top; }
 footer.foot { color:var(--muted); font-size:14px; padding:36px 0 48px; display:flex; flex-wrap:wrap; gap:8px 20px; justify-content:space-between; }
-`;
-
-// A small Markdown renderer for excerpts and pages. Everything is HTML-escaped first, so text from a repository can
-// never become markup; links are kept only for http(s) URLs or paths resolved against the file on GitHub.
-export const markdownJs = String.raw`
-function escHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
-function safeHref(raw, base) {
-  var href = raw.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  try {
-    var u = /^https?:\/\//i.test(href) ? new URL(href) : (base ? new URL(href, base) : null);
-    if (!u || (u.protocol !== 'https:' && u.protocol !== 'http:')) return null;
-    return escHtml(u.href);
-  } catch (e) { return null; }
-}
-// Code spans in already-escaped text; with emphasis, bold and italics outside them.
-function codeSpans(escaped, emphasis) {
-  return escaped.split(/(\x60[^\x60]+\x60)/g).map(function (p) {
-    if (/^\x60[^\x60]+\x60$/.test(p)) return '<code>' + p.slice(1, -1) + '</code>';
-    if (!emphasis) return p;
-    return p.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
-  }).join('');
-}
-// Links first (their label may hold a code span, like a command name), kept aside as placeholders while code spans and
-// emphasis are rendered, then put back.
-function inlineMd(text, base) {
-  var links = [];
-  var s = escHtml(text)
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, function (m, label, href) {
-      var u = safeHref(href, base), l = codeSpans(label, false);
-      links.push(u ? '<a href="' + u + '" target="_blank" rel="noopener">' + l + '</a>' : l);
-      return '\x00' + (links.length - 1) + '\x00';
-    });
-  return codeSpans(s, true).replace(/\x00(\d+)\x00/g, function (m, n) { return links[Number(n)]; });
-}
-function renderMd(src, base) {
-  var lines = String(src || '').replace(/\r\n/g, '\n').split('\n'), out = [], i = 0;
-  function isTag(l) { return /^\s*<\/?[a-zA-Z][^>]*>\s*$/.test(l); }
-  while (i < lines.length) {
-    var line = lines[i];
-    var fence = /^\s*(\x60{3,}|~{3,})/.exec(line);
-    if (fence) {
-      var code = []; i++;
-      while (i < lines.length && lines[i].trim().indexOf(fence[1]) !== 0) { code.push(lines[i]); i++; }
-      i++; out.push('<pre><code>' + escHtml(code.join('\n')) + '</code></pre>'); continue;
-    }
-    if (!line.trim() || isTag(line)) { i++; continue; }
-    var h = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (h) { out.push('<h4>' + inlineMd(h[2], base) + '</h4>'); i++; continue; }
-    if (/^\s*\|/.test(line)) {
-      var rows = [];
-      while (i < lines.length && /^\s*\|/.test(lines[i])) { rows.push(lines[i]); i++; }
-      var cells = rows.filter(function (r) { return !/^\s*\|?\s*:?-{2,}/.test(r); }).map(function (r) { return r.trim().replace(/^\||\|$/g, '').split('|'); });
-      out.push('<table>' + cells.map(function (c, n) { var tag = n === 0 ? 'th' : 'td'; return '<tr>' + c.map(function (x) { return '<' + tag + '>' + inlineMd(x.trim(), base) + '</' + tag + '>'; }).join('') + '</tr>'; }).join('') + '</table>');
-      continue;
-    }
-    if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
-      var ordered = /^\s*\d/.test(line), items = [];
-      while (i < lines.length && (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
-        var m = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
-        if (m) items.push(m[2]); else items[items.length - 1] += ' ' + lines[i].trim();
-        i++;
-      }
-      out.push((ordered ? '<ol>' : '<ul>') + items.map(function (t) { return '<li>' + inlineMd(t.replace(/^\[( |x)\]\s*/i, ''), base) + '</li>'; }).join('') + (ordered ? '</ol>' : '</ul>'));
-      continue;
-    }
-    if (/^\s*>/.test(line)) {
-      var q = [];
-      while (i < lines.length && /^\s*>/.test(lines[i])) { q.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
-      out.push('<blockquote>' + inlineMd(q.join(' ').replace(/^\[!(\w+)\]\s*/, '$1: '), base) + '</blockquote>');
-      continue;
-    }
-    var para = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*(\x60{3,}|~{3,})|\s*\||\s*([-*+]|\d+[.)])\s+|\s*>)/.test(lines[i]) && !isTag(lines[i])) { para.push(lines[i].trim()); i++; }
-    if (para.length) out.push('<p>' + inlineMd(para.join(' '), base) + '</p>'); else i++;
-  }
-  return out.join('');
-}
 `;
 
 const landingCss = String.raw`
@@ -543,7 +476,8 @@ function ask(question) {
         view.onclick = function (e) { e.preventDefault(); openPage(s.source, s.section); };
         head.append(view);
         if (s.url) { var gh = el('a', 'open hide-sm', 'GitHub ↗'); gh.href = s.url; gh.target = '_blank'; gh.rel = 'noopener'; head.append(gh); }
-        var body = el('div', 'md'); body.innerHTML = renderMd(s.excerpt, dirOf(s.url));
+        // s.html is sanitized on the server (md2html: allowlisted tags, no scripts or handlers, URLs resolved).
+        var body = el('div', 'md'); body.innerHTML = s.html;
         card.append(head, body); box.append(card);
       });
       box.append(aiRow(b.prompt));
@@ -566,7 +500,7 @@ function openPage(source, section) {
     var target = null;
     p.sections.forEach(function (s) {
       if (s.section) { var h = el('h3', null, s.section); box.append(h); if (s.section === section) target = h; }
-      var md = el('div', 'md'); md.innerHTML = renderMd(s.body, dirOf(p.url)); box.append(md);
+      var md = el('div', 'md'); md.innerHTML = s.html; box.append(md);
     });
     if (target) target.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
     if (window.innerWidth < 860) $('side').classList.remove('open');
@@ -622,6 +556,6 @@ export const centerPage = `<!doctype html>
     <section id="article" class="article" hidden></section>
   </main>
 </div>
-<script>${markdownJs}${centerJs}</script>
+<script>${centerJs}</script>
 </body>
 </html>`;

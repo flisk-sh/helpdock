@@ -53,7 +53,7 @@ describe('normalizeMarkdown', () => {
 
   it('strips MDX imports and JSX tags but keeps code fences and text', () => {
     const mdx = "import { Tab } from 'x'\n\n<Tabs>\n<Tab title=\"npm\">Install with npm</Tab>\n</Tabs>\n\n```js\nimport a from 'b'\n<Foo />\n```";
-    expect(normalizeMarkdown('a.mdx', mdx)).toBe("Install with npm\n\n```js\nimport a from 'b'\n<Foo />\n```");
+    expect(normalizeMarkdown('a.mdx', mdx)).toBe("Install with npm\n\n\n```js\nimport a from 'b'\n<Foo />\n```");
     expect(normalizeMarkdown('a.mdx', '{/* The content is shared.\n Keep it. */}\n\nReal text.')).toBe('Real text.');
   });
 });

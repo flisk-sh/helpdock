@@ -81,8 +81,8 @@ export function securityHeaders(html: string): Record<string, string> {
       `script-src ${scriptHash(html)}`,
       "style-src 'unsafe-inline'",
       "connect-src 'self'",
-      // Repository owners' avatars (github.com/<owner>.png redirects to avatars.githubusercontent.com).
-      "img-src 'self' data: https://github.com https://avatars.githubusercontent.com",
+      // Images in docs and READMEs come from many hosts (badges, CDNs, raw.githubusercontent.com); https only.
+      "img-src 'self' data: https:",
       "base-uri 'none'",
       "form-action 'self'",
       "frame-ancestors 'none'",

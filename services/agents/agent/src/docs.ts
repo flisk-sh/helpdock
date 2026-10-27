@@ -26,6 +26,8 @@ export interface Source {
   source: string;
   /** Markdown: the paragraphs (or code block) of the section that best match the question. */
   excerpt: string;
+  /** The excerpt with its HTML reduced to text: what the reply, MCP and the AI prompt carry. */
+  text: string;
   /** Where the section lives, when known (a GitHub file and heading). */
   url?: string;
 }
@@ -235,27 +237,23 @@ export function dedupeHits(hits: SearchHit[]): SearchHit[] {
 }
 
 /** Every hit as a numbered source with its excerpt and link. */
-export function toSources(question: string, hits: SearchHit[], link?: LinkFor): Source[] {
-  return hits.map((h, i) => ({
-    n: i + 1,
-    title: h.title,
-    section: h.section,
-    source: h.source,
-    excerpt: h.body !== undefined ? excerpt(h.body, question) : cleanSnippet(h.snippet),
-    url: link?.(h),
-  }));
+export function toSources(question: string, hits: SearchHit[], link?: LinkFor, toText: (md: string) => string = (m) => m): Source[] {
+  return hits.map((h, i) => {
+    const quote = h.body !== undefined ? excerpt(h.body, question) : cleanSnippet(h.snippet);
+    return { n: i + 1, title: h.title, section: h.section, source: h.source, excerpt: quote, text: toText(quote).trim(), url: link?.(h) };
+  });
 }
 
 // The answer: the best matching passages, each with its citation number.
-export function extractiveAnswer(question: string, hits: SearchHit[], link?: LinkFor): Answer {
+export function extractiveAnswer(question: string, hits: SearchHit[], link?: LinkFor, toText?: (md: string) => string): Answer {
   if (hits.length === 0) {
     return {
       reply: `I couldn't find anything about "${question}" in the docs. Try other words, or browse the pages.`,
       sources: [],
     };
   }
-  const sources = toSources(question, dedupeHits(hits).slice(0, 3), link);
-  const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''}\n${s.excerpt}`);
+  const sources = toSources(question, dedupeHits(hits).slice(0, 3), link, toText);
+  const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''}\n${s.text}`);
   return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources };
 }
 
@@ -270,7 +268,7 @@ export function aiPrompt(question: string, sources: Source[], siteUrl: string): 
     `Question: ${question}\n\nPassages:\n`;
   let body = '';
   for (const s of sources.slice(0, 3)) {
-    const passage = `\n[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''} (${s.url ?? s.source})\n${s.excerpt}\n`;
+    const passage = `\n[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''} (${s.url ?? s.source})\n${s.text}\n`;
     if (head.length + body.length + passage.length > MAX_PROMPT_CHARS) break;
     body += passage;
   }

@@ -143,7 +143,7 @@ export function normalizeMarkdown(path: string, text: string): string {
     // MDX comments, {/* ... */}, can span lines.
     body = out.join('\n').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   }
-  body = htmlToMarkdown(mkdocsToMarkdown(body));
+  body = mkdocsToMarkdown(body);
   if (title) {
     // The front matter title is the page's real one (Next.js: "Glossary", over its "# A", "# B" letter headings), so
     // it becomes the only # heading and the body's own # headings move down a level, outside code fences.
@@ -165,7 +165,8 @@ const HTML_TAGS =
 const TAG = new RegExp(`<\\/?(?:${HTML_TAGS})(?:\\s[^<>]*)?\\/?>`, 'gi');
 
 /**
- * HTML inside Markdown (README badges, tables of image links, <details>) as text: comments dropped, an image becomes
+ * HTML inside Markdown (README badges, tables of image links, <details>) as text, for the search index and for the
+ * text an AI is handed (display keeps the HTML and renders it with md2html): comments dropped, an image becomes
  * its alt text, line breaks and table rows become new lines, cells are separated, other tags go and their text stays.
  * Code (fenced blocks and inline spans) is left alone, so `<App>` in a code span survives.
  */

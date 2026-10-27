@@ -20,9 +20,10 @@ services:
       # Any public GitHub repository at /owner/repo, and the landing page at /.
       - key: HELPDOCK_REPOS
         value: "1"
-      # Render free: 512 MB and 0.1 CPU. One repository build at a time keeps memory well under the limit.
+      # Render free: 512 MB and 0.1 CPU. Two builds at a time; the memory guard (HELPDOCK_MEMORY_MB, 300) stops a read
+      # and refuses new builds before the limit, and pre-building waits while a visitor's build runs.
       - key: HELPDOCK_MAX_BUILDS
-        value: "1"
+        value: "2"
       - key: HELPDOCK_PUBLIC_URL
         value: https://helpdock.flisk.sh/
       - key: HELPDOCK_PROXY

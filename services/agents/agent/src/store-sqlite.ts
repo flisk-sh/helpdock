@@ -4,13 +4,14 @@
 // Set HELPDOCK_SQLITE_PATH to a file on a persistent disk to keep them.
 import { Database } from 'bun:sqlite';
 import { chunkMarkdown, ftsQuery, type SearchHit } from './docs';
-import { docPriority } from './github';
+import { docPriority, htmlToMarkdown } from './github';
 import type { Checkpoint, Stores } from './store';
 
 export function createSqliteStores(path: string): Stores {
   const db = new Database(path, { create: true });
+  // text is what is searched (HTML reduced to its text); body is the section's Markdown as written, for display.
   db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS help_docs
-          USING fts5(title, section, body, source UNINDEXED, tokenize = 'porter unicode61')`);
+          USING fts5(title, section, text, body UNINDEXED, source UNINDEXED, tokenize = 'porter unicode61')`);
   db.run(`CREATE TABLE IF NOT EXISTS flisk_agent_sessions (
             session_id TEXT PRIMARY KEY,
             messages TEXT NOT NULL,
@@ -19,7 +20,14 @@ export function createSqliteStores(path: string): Stores {
   const replacePage = db.transaction((source: string, rows: ReturnType<typeof chunkMarkdown>) => {
     db.run('DELETE FROM help_docs WHERE source = ?', source);
     for (const r of rows) {
-      db.run('INSERT INTO help_docs (title, section, body, source) VALUES (?, ?, ?, ?)', r.title, r.section, r.body, source);
+      db.run(
+        'INSERT INTO help_docs (title, section, text, body, source) VALUES (?, ?, ?, ?, ?)',
+        r.title,
+        r.section,
+        htmlToMarkdown(r.body),
+        r.body,
+        source,
+      );
     }
   });
 
@@ -58,7 +66,7 @@ export function createSqliteStores(path: string): Stores {
           .query<SearchHit>(
             `SELECT rowid AS id, source, title, section, body,
                     snippet(help_docs, 2, '<b>', '</b>', ' … ', 48) AS snippet,
-                    -bm25(help_docs, 10.0, 10.0, 1.0) AS rank
+                    -bm25(help_docs, 10.0, 10.0, 1.0, 0.0, 0.0) AS rank
              FROM help_docs WHERE help_docs MATCH ?
              ORDER BY rank DESC LIMIT ?`,
           )
