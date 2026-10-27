@@ -84,6 +84,11 @@ export function createPostgresStores(databaseUrl: string): Stores {
         }
         return chunks.length;
       },
+      async upsertMany(pages: Array<{ source: string; markdown: string }>) {
+        let n = 0;
+        for (const p of pages) n += await this.upsert(p.source, p.markdown);
+        return n;
+      },
       async count() {
         const res = await pool.query('SELECT count(*)::int AS n FROM help_docs');
         return res.rows[0].n;

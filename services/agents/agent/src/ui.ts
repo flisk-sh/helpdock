@@ -289,6 +289,18 @@ var base = location.pathname.endsWith('/') ? location.pathname : location.pathna
 var $ = function (id) { return document.getElementById(id); };
 var info = null, pages = [], current = null, readmeShown = false, typing = false;
 // While the index builds, the README comes straight from GitHub so there is something to read at once.
+// Search is open while the last pages are added: show the count, and reload the page list once it is complete.
+function followIndexing() {
+  setStatus('Indexing… ' + (info.files || 0) + ' pages');
+  setTimeout(function () {
+    api('status').then(function (s) {
+      info = s;
+      if (s.indexing) return followIndexing();
+      setStatus((s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''));
+      loadPages();
+    }).catch(function () { setTimeout(followIndexing, 3000); });
+  }, 2000);
+}
 function showReadme() {
   readmeShown = 'loading';
   api('readme').then(function (r) {
@@ -353,6 +365,7 @@ function boot() {
     $('mcpjson').textContent = JSON.stringify({ mcpServers: servers }, null, 2);
     $('ask').hidden = false;
     loadPages();
+    if (s.indexing) followIndexing();
     var hash = decodeURIComponent(location.hash.slice(1));
     if (hash.indexOf('page=') === 0) openPage(hash.slice(5));
     else if (hash.indexOf('q=') === 0) ask(hash.slice(2));

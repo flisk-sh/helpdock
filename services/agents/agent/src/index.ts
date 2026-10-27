@@ -234,6 +234,7 @@ function repoStatus(entry: RepoEntry, site: string) {
     files: entry.files,
     sections: entry.sections,
     truncated: entry.truncated,
+    indexing: entry.indexing,
     progress: entry.progress,
     mcpUrl: `${site}${owner}/${repo}/mcp`,
   };

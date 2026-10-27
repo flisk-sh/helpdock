@@ -1,7 +1,7 @@
 // Help centers for public GitHub repositories, built on demand: /owner/repo reads the repository's Markdown from
 // GitHub and indexes it in its own in-memory SQLite database. The URL is the whole state, so nothing needs saving: a
 // restarted (or sleeping) instance rebuilds a repository on its next visit, in a few seconds.
-import { fileUrl, MEMORY_LIMIT_MB, type RepoRef, RepoNotFound, readRepoDocs, rssMb } from './github';
+import { docPriority, fileUrl, MEMORY_LIMIT_MB, type RepoRef, RepoNotFound, readRepoDocs, rssMb } from './github';
 import type { Stores } from './store';
 import { createSqliteStores } from './store-sqlite';
 
@@ -19,6 +19,8 @@ export interface RepoEntry {
   truncated: boolean;
   /** While building: Markdown files found and archive bytes read so far. */
   progress: { files: number; archiveBytes: number };
+  /** Ready to search, while the rest of its pages are still being added. */
+  indexing: boolean;
   error: string | null;
   notFound: boolean;
   builtAt: number;
@@ -54,6 +56,7 @@ export class BusyError extends Error {}
 
 // Over the archive reader's 60 s limit with room for a CPU-starved instance to wind down and index what it read.
 const BUILD_DEADLINE_MS = 180_000;
+const INDEX_BATCH = 50;
 
 export function repoKey(ref: RepoRef): string {
   return `${ref.owner}/${ref.repo}`.toLowerCase();
@@ -120,6 +123,7 @@ export class RepoCache {
       bytes: previous?.bytes ?? 0,
       truncated: previous?.truncated ?? false,
       progress: { files: 0, archiveBytes: 0 },
+      indexing: false,
       error: null,
       notFound: false,
       builtAt: now,
@@ -142,28 +146,34 @@ export class RepoCache {
           entry.error = 'This repository has no Markdown documentation to index.';
           return entry;
         }
+        // Best pages first, in batches of 50, each in one transaction. Search opens after the first batch (the docs
+        // folders and the README); the rest is added after it, with the event loop given a turn between batches so
+        // visitors are answered meanwhile. On a 0.1 CPU instance this is what makes a 600-page repository usable in
+        // seconds instead of after all of it.
         const stores = createSqliteStores(':memory:');
+        const order = [...read.files].sort((a, b) => docPriority(b.path) - docPriority(a.path) || a.path.localeCompare(b.path));
         let sections = 0;
         let bytes = 0;
-        for (const [i, f] of read.files.entries()) {
-          sections += await stores.docs.upsert(f.path, f.text);
-          bytes += f.text.length;
-          // Indexing is synchronous work; on a 0.1 CPU instance a 600-file repository blocked every request for
-          // seconds. Giving the event loop a turn every few files keeps visitors answered while it builds.
-          if (i % 8 === 7) await new Promise((r) => setImmediate(r));
+        for (let start = 0; start < order.length; start += INDEX_BATCH) {
+          const batch = order.slice(start, start + INDEX_BATCH);
+          sections += await stores.docs.upsertMany(batch.map((f) => ({ source: f.path, markdown: f.text })));
+          bytes += batch.reduce((n, f) => n + f.text.length, 0);
+          const done = Math.min(order.length, start + INDEX_BATCH);
+          if (start === 0) {
+            await previous?.stores?.store.close();
+            Object.assign(entry, {
+              status: 'ready' as const,
+              stores,
+              sha: read.sha,
+              truncated: read.truncated,
+              builtAt: this.opts.now(),
+            });
+          }
+          Object.assign(entry, { files: done, sections, bytes, indexing: done < order.length });
+          await new Promise((r) => setImmediate(r));
         }
-        await previous?.stores?.store.close();
-        Object.assign(entry, {
-          status: 'ready' as const,
-          stores,
-          sha: read.sha,
-          // Pages with content: a file of only front matter or components indexes nothing.
-          files: (await stores.docs.pages()).length,
-          sections,
-          bytes,
-          truncated: read.truncated,
-          builtAt: this.opts.now(),
-        });
+        // Pages with content: a file of only front matter or components indexes nothing.
+        Object.assign(entry, { files: (await stores.docs.pages()).length, indexing: false });
         const rss = Math.round(process.memoryUsage().rss / 1024 / 1024);
         console.log(`[repos] ${key}: ${read.files.length} files, ${sections} sections${read.truncated ? ' (truncated)' : ''}, rss ${rss} MB`);
         return entry;

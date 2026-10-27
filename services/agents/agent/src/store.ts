@@ -20,6 +20,8 @@ export interface DocStore {
   search(query: string, limit?: number): Promise<SearchHit[]>;
   /** Adds or replaces every section of one page; returns the number of sections. */
   upsert(source: string, markdown: string): Promise<number>;
+  /** Many pages at once (one transaction where the store has them); returns the number of sections. */
+  upsertMany(pages: Array<{ source: string; markdown: string }>): Promise<number>;
   count(): Promise<number>;
   /** Every page: its source path, title and number of sections, sorted by path. */
   pages(): Promise<Array<{ source: string; title: string; sections: number; lead: string }>>;

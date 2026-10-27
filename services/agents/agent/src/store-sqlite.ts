@@ -31,6 +31,11 @@ export function createSqliteStores(path: string): Stores {
     }
   });
 
+  // One transaction for a whole batch: FTS5 writes are far cheaper together than one transaction per page.
+  const replacePages = db.transaction((pages: Array<{ source: string; rows: ReturnType<typeof chunkMarkdown> }>) => {
+    for (const p of pages) replacePage(p.source, p.rows);
+  });
+
   return {
     store: {
       kind: 'sqlite',
@@ -84,6 +89,11 @@ export function createSqliteStores(path: string): Stores {
         const rows = chunkMarkdown(source, markdown);
         replacePage(source, rows);
         return rows.length;
+      },
+      async upsertMany(pages: Array<{ source: string; markdown: string }>) {
+        const chunked = pages.map((p) => ({ source: p.source, rows: chunkMarkdown(p.source, p.markdown) }));
+        replacePages(chunked);
+        return chunked.reduce((n, p) => n + p.rows.length, 0);
       },
       async count() {
         return db.query<{ n: number }>('SELECT count(*) AS n FROM help_docs').get()?.n ?? 0;
