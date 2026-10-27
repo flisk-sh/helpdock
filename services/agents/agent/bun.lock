@@ -5,7 +5,7 @@
     "": {
       "name": "@project/agent",
       "dependencies": {
-        "@flisk-sh/md2html": "github:flisk-sh/md2html#v0.1.0",
+        "@flisk-sh/md2html": "^0.1.0",
         "@modelcontextprotocol/sdk": "^1.32.0",
         "pg": "^8.13.0",
         "zod": "^4.0.0",
@@ -43,7 +43,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.6.3", "", { "os": "win32", "cpu": "x64" }, "sha512-GhtOPphBWlnCepqpNk/w5eGN5oGRCzL20EbAkL1XCIpyboeVC9R642noyT43l8LSenGS4qz9IL8sKPfwY37V/Q=="],
 
-    "@flisk-sh/md2html": ["@flisk-sh/md2html@github:flisk-sh/md2html#0e583dd", { "dependencies": { "markdown-it": "^15.0.3", "sanitize-html": "^2.18.1" } }, "flisk-sh-md2html-0e583dd", "sha512-vhgR19Q0me9F+eKqS8xzD2DY+HKOWxGKU/mn77IVt85Bh281h1jzBKseqYUc7YBmjriCYVibVOR6eOGw/SslXw=="],
+    "@flisk-sh/md2html": ["@flisk-sh/md2html@0.1.0", "", { "dependencies": { "markdown-it": "^15.0.3", "sanitize-html": "^2.18.1" } }, "sha512-fbwRP2B/ZBMc/8fk/Hk2klB6aJUVr1BD3h7UCEM9ztFhdbO5ywaZJLVTR3RMvOPTgK1xepfhsv3r7h4NQYo5LQ=="],
 
     "@hono/node-server": ["@hono/node-server@2.1.5", "", { "peerDependencies": { "hono": "^4 || ^5.0.0-0" } }, "sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q=="],
 

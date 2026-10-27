@@ -12,7 +12,7 @@
     "seed:pack": "bun scripts/pack-seed-docs.ts"
   },
   "dependencies": {
-    "@flisk-sh/md2html": "github:flisk-sh/md2html#v0.1.0",
+    "@flisk-sh/md2html": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "pg": "^8.13.0",
     "zod": "^4.0.0"
