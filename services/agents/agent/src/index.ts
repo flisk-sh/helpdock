@@ -426,6 +426,8 @@ server.listen(PORT, '0.0.0.0', () => {
 // Build the landing page's example repositories one after another, after start, so a visitor who clicks one gets
 // an index that is already there.
 async function prewarm() {
+  // After start, the visitor who woke the instance comes first.
+  await new Promise((r) => setTimeout(r, Number(process.env.HELPDOCK_PREWARM_DELAY_MS ?? 30_000)));
   const list = (process.env.HELPDOCK_PREWARM ?? EXAMPLE_REPOS.join(','))
     .split(',')
     .map((r) => parseRepoPath(`/${r.trim()}`))

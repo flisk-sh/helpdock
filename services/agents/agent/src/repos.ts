@@ -145,9 +145,12 @@ export class RepoCache {
         const stores = createSqliteStores(':memory:');
         let sections = 0;
         let bytes = 0;
-        for (const f of read.files) {
+        for (const [i, f] of read.files.entries()) {
           sections += await stores.docs.upsert(f.path, f.text);
           bytes += f.text.length;
+          // Indexing is synchronous work; on a 0.1 CPU instance a 600-file repository blocked every request for
+          // seconds. Giving the event loop a turn every few files keeps visitors answered while it builds.
+          if (i % 8 === 7) await new Promise((r) => setImmediate(r));
         }
         await previous?.stores?.store.close();
         Object.assign(entry, {

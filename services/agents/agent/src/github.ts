@@ -329,9 +329,12 @@ export async function readRepoMarkdown(
     const reader = res.body.getReader();
     let compressed = 0;
     try {
+      let chunks = 0;
       while (!stop && !abort.signal.aborted) {
         const { done, value } = await reader.read();
         if (done) break;
+        // Untarring runs on the main thread: let requests in between chunks (see the indexing loop in repos.ts).
+        if (++chunks % 16 === 0) await new Promise((r) => setImmediate(r));
         compressed += value.length;
         if (compressed > limits.maxArchiveBytes / 4 || rssMb() > MEMORY_LIMIT_MB) {
           if (rssMb() > MEMORY_LIMIT_MB) console.warn(`[github] ${ref.owner}/${ref.repo}: memory at ${Math.round(rssMb())} MB, keeping what was read`);
