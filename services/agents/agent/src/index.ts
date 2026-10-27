@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { join } from 'node:path';
 import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { renderMarkdown } from '@flisk-sh/md2html';
-import { docPriority, htmlToMarkdown, parseRepoPath, type RepoRef } from './github';
+import { docPriority, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
 import { BusyError, RepoCache, type RepoEntry, repoLink } from './repos';
@@ -353,6 +353,29 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   return sendJson(res, 404, { error: 'not_found' });
 }
 
+// The README, straight from raw.githubusercontent.com (no API, no limit), rendered at once: what a visitor reads while
+// the search index builds. Kept per repository for ten minutes.
+const readmes = new Map<string, { at: number; body: unknown }>();
+async function readme(ref: RepoRef) {
+  const key = `${ref.owner}/${ref.repo}`.toLowerCase();
+  const hit = readmes.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.body;
+  for (const name of ['README.md', 'readme.md', 'Readme.md', 'README.mdx', 'docs/README.md']) {
+    const res = await fetch(`https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/HEAD/${name}`, {
+      headers: { 'user-agent': 'helpdock' },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => null);
+    if (!res?.ok) continue;
+    const url = `https://github.com/${ref.owner}/${ref.repo}/blob/HEAD/${name}`;
+    const markdown = normalizeMarkdown(name, (await res.text()).slice(0, 512 * 1024));
+    const body = { source: name, url, html: renderMarkdown(markdown, { baseUrl: url }) };
+    readmes.set(key, { at: Date.now(), body });
+    if (readmes.size > 200) readmes.delete(readmes.keys().next().value as string);
+    return body;
+  }
+  return null;
+}
+
 async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, res: ServerResponse, url: URL, ip: string) {
   // /owner/repo → /owner/repo/, so the page's relative API paths resolve below the repository.
   if (ref.rest === '' && !url.pathname.endsWith('/')) {
@@ -361,6 +384,14 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
     return res.end();
   }
   const sub = ref.rest.replace(/^\//, '').replace(/\/$/, '');
+  if (sub === 'readme' && req.method === 'GET') {
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const body = await readme(ref);
+    if (!body) return sendJson(res, 404, { error: 'no README' });
+    res.setHeader('cache-control', 'public, max-age=300');
+    return sendJson(res, 200, body);
+  }
   let entry: RepoEntry;
   try {
     entry = repos.get(ref, () => buildLimit.hit(ip) === 0);

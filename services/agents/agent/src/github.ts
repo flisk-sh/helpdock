@@ -1,13 +1,20 @@
-// Reading a public GitHub repository's Markdown, two ways, fastest first:
-//   readRepoViaApi       one call to the git trees API lists every file, then only the chosen docs are fetched from
-//                        raw.githubusercontent.com, in parallel. Unauthenticated, the API allows 60 calls an hour per
-//                        address, and a host's address is often shared (GITHUB_TOKEN, optional, lifts that to 5000).
+// Reading a public GitHub repository's Markdown, three ways, first that works:
+//   readRepoViaGit       git's own protocol, no REST API and no token: a partial clone of the default branch at depth 1
+//                        with no file contents (--filter=blob:none), then a sparse checkout of *.md and *.mdx, so git
+//                        downloads the file tree and the docs only (Next.js: 1,335 docs, 9 MB, about 4 s). It runs in
+//                        its own process, so the server keeps answering while it works.
+//   readRepoViaApi       GitHub's git trees API and raw.githubusercontent.com. Unauthenticated it allows 60 calls an
+//                        hour per address, and a host's address is often shared.
 //   readRepoMarkdown     GitHub's archive download (codeload.github.com), gunzipped and untarred as it streams,
 //                        keeping only documentation. Works for any public repository, slowly for big ones.
-// readRepoDocs tries them in that order. (jsDelivr's GitHub mirror was tried and dropped: its branch listings can be
-// months old, so it served docs that no longer exist.) Both stop at fixed limits so a huge repository cannot
-// exhaust a small instance. The hosts are fixed and the owner and name are validated, so a request can never make the
-// server fetch an address of its choosing.
+// Tried and dropped: jsDelivr's mirror (branch listings months old) and ungh.cc (rate limited by address, like the
+// API). Every way stops at fixed limits so a huge repository cannot exhaust a small instance, and the repository
+// name is validated, so a request can never make the server fetch an address of its choosing.
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { TarStream } from './tar';
 
@@ -482,13 +489,84 @@ export async function readRepoViaApi(
   }
 }
 
-/** The GitHub API first, then the archive. A missing repository is final. */
+const run = promisify(execFile);
+
+/** git at the default branch, docs only (see the header). */
+export async function readRepoViaGit(
+  ref: RepoRef,
+  limits: ReadLimits = DEFAULT_LIMITS,
+  onProgress?: (p: { files: number; archiveBytes: number }) => void,
+): Promise<RepoRead> {
+  const dir = await mkdtemp(join(tmpdir(), 'helpdock-git-'));
+  const deadline = Date.now() + limits.timeoutMs;
+  const git = async (...args: string[]) => {
+    const left = Math.max(1000, deadline - Date.now());
+    const { stdout } = await run('git', args, {
+      cwd: dir,
+      timeout: left,
+      maxBuffer: 64 * 1024 * 1024,
+      // Never ask for credentials: a private or missing repository must fail, not wait for a prompt.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', GCM_INTERACTIVE: 'never' },
+    });
+    return stdout;
+  };
+  try {
+    try {
+      await git('clone', '--quiet', '--filter=blob:none', '--depth', '1', '--no-checkout', '--single-branch', `https://github.com/${ref.owner}/${ref.repo}.git`, 'repo');
+    } catch (err) {
+      const text = String((err as { stderr?: string }).stderr ?? err);
+      if (/not found|could not read Username|terminal prompts disabled|Authentication failed/i.test(text)) {
+        throw new RepoNotFound(`${ref.owner}/${ref.repo} is not a public GitHub repository`);
+      }
+      throw err;
+    }
+    const repo = join(dir, 'repo');
+    const gitIn = (...args: string[]) => git('-C', repo, ...args);
+    await gitIn('sparse-checkout', 'set', '--no-cone', '*.md', '*.mdx', '*.markdown');
+    await gitIn('checkout', '--quiet');
+    const sha = (await gitIn('rev-parse', 'HEAD')).trim();
+    const paths = (await gitIn('ls-files', '-z')).split('\0').filter(Boolean);
+    const sized: Array<{ path: string; size: number }> = [];
+    for (const path of paths) {
+      if (!isDocPath(path)) continue;
+      try {
+        const st = await stat(join(repo, path));
+        if (st.isFile()) sized.push({ path, size: st.size });
+      } catch {
+        // Not checked out (outside the sparse patterns): skip.
+      }
+    }
+    const { chosen, candidates } = chooseDocs(sized, limits);
+    const files: RepoFile[] = [];
+    let bytes = 0;
+    for (const path of chosen) {
+      const text = await readFile(join(repo, path), 'utf8');
+      bytes += text.length;
+      files.push({ path, text: normalizeMarkdown(path, text) });
+      onProgress?.({ files: files.length, archiveBytes: bytes });
+      if (files.length % 16 === 0) await new Promise((r) => setImmediate(r));
+    }
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    return { files, sha, truncated: candidates > chosen.length, archiveBytes: bytes };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** git first, then GitHub's API, then the archive. A missing repository is final. */
 export async function readRepoDocs(
   ref: RepoRef,
   limits: ReadLimits = DEFAULT_LIMITS,
   onProgress?: (p: { files: number; archiveBytes: number }) => void,
 ): Promise<RepoRead> {
   const name = `${ref.owner}/${ref.repo}`;
+  try {
+    const read = await readRepoViaGit(ref, limits, onProgress);
+    if (read.files.length > 0) return read;
+  } catch (err) {
+    if (err instanceof RepoNotFound) throw err;
+    console.warn(`[github] ${name}: git: ${(err as Error).message.split('\n')[0]}; trying the GitHub API`);
+  }
   try {
     return await readRepoViaApi(ref, limits, onProgress);
   } catch (err) {

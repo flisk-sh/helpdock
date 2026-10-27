@@ -25,6 +25,8 @@ COPY services/agents/agent-migrator/prisma migrator/prisma
 COPY services/agents/agent-migrator/prisma.config.ts migrator/
 
 FROM node:22-slim
+# git: repositories are read with a partial, sparse clone (docs only), the way that needs no API and no token.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 ENV NODE_ENV=production
 WORKDIR /app

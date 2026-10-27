@@ -60,6 +60,11 @@ input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .md blockquote { margin:0 0 .7em; padding:2px 12px; border-left:3px solid var(--line); color:var(--muted); }
 .md table { border-collapse:collapse; font-size:14px; margin:0 0 .8em; display:block; overflow:auto; }
 .md img { max-width:100%; height:auto; vertical-align:middle; }
+/* GitHub's theme images: a README marks its light and dark logo with these fragments, and only one shows. */
+.md img[src*="#gh-dark-mode-only"] { display:none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .md img[src*="#gh-dark-mode-only"] { display:inline; } :root:not([data-theme="light"]) .md img[src*="#gh-light-mode-only"] { display:none; } }
+:root[data-theme="dark"] .md img[src*="#gh-dark-mode-only"] { display:inline; }
+:root[data-theme="dark"] .md img[src*="#gh-light-mode-only"] { display:none; }
 .md p[align="center"], .md div[align="center"], .md h1[align="center"], .md h2[align="center"], .md h3[align="center"] { text-align:center; }
 .md h1, .md h2, .md h3, .md h5, .md h6 { margin:1em 0 .4em; line-height:1.25; }
 .md h1 { font-size:22px; } .md h2 { font-size:19px; } .md h3 { font-size:16.5px; } .md h5, .md h6 { font-size:14px; }
@@ -79,10 +84,13 @@ const landingCss = String.raw`
 .eyebrow { display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:600; color:var(--accent); background:var(--tint); padding:5px 12px; border-radius:999px; }
 .hero h1 { font-size:clamp(34px, 5.6vw, 58px); line-height:1.04; letter-spacing:-.035em; margin:18px 0 16px; max-width:15ch; }
 .hero p.lede { font-size:19px; color:var(--muted); max-width:58ch; margin:0 0 26px; }
-.swap { display:inline-flex; flex-wrap:wrap; align-items:center; gap:0; font-size:clamp(15px, 2.4vw, 20px); background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin:0 0 22px; max-width:100%; overflow-wrap:anywhere; }
-.swap s { color:var(--muted); text-decoration-thickness:2px; }
-.swap b { color:var(--accent); }
-.swap .arrow { color:var(--muted); margin:0 8px; }
+.swap { display:inline-flex; flex-direction:column; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin:0 0 22px; max-width:100%; }
+.swap .from { font-size:clamp(14px, 2vw, 17px); color:var(--muted); overflow-wrap:anywhere; }
+.swap .from s { text-decoration-thickness:2px; }
+.swap .to { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.swap .to a { font-size:clamp(16px, 2.6vw, 22px); color:var(--ink); text-decoration:none; overflow-wrap:anywhere; }
+.swap .to a:hover { text-decoration:underline; }
+.swap .to b { color:var(--accent); }
 form.open { max-width:640px; }
 .examples { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:10px; margin:22px 0 8px; }
 .ex { display:flex; gap:12px; align-items:center; text-decoration:none; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
@@ -116,6 +124,10 @@ document.getElementById('open').onsubmit = function (e) {
   location.href = '/' + repo + '/';
 };
 document.querySelectorAll('[data-host]').forEach(function (el) { el.textContent = location.host; });
+document.getElementById('copytry').onclick = function () {
+  var b = this; navigator.clipboard.writeText(location.origin + '/vercel/next.js/').then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy failed'; });
+  setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+};
 document.querySelectorAll('[data-mcp]').forEach(function (el) { el.textContent = 'claude mcp add --transport http nextjs ' + location.origin + '/vercel/next.js/mcp'; });
 `;
 
@@ -147,7 +159,10 @@ export const landingPage = `<!doctype html>
     <span class="eyebrow">Open source · No signup · No API key</span>
     <h1>Any GitHub repo's docs, as a help center.</h1>
     <p class="lede">Search and browse a repository's Markdown, get answers quoted from the exact page with a link to it on GitHub, and give the same docs to your own AI over MCP.</p>
-    <div class="swap mono">https://<s>github.com</s><span class="arrow">→</span><b data-host>helpdock.flisk.sh</b>/vercel/next.js</div>
+    <div class="swap">
+      <div class="from mono"><s>github.com</s>/vercel/next.js</div>
+      <div class="to"><a class="mono" id="tryurl" href="/vercel/next.js/"><b data-host>helpdock.flisk.sh</b>/vercel/next.js</a><button class="ghost" id="copytry" type="button">Copy</button></div>
+    </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
   </section>
@@ -244,7 +259,20 @@ details.fold.more > summary { color:var(--muted); }
 const centerJs = String.raw`
 var base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 var $ = function (id) { return document.getElementById(id); };
-var info = null, pages = [], current = null;
+var info = null, pages = [], current = null, readmeShown = false;
+// While the index builds, the README comes straight from GitHub so there is something to read at once.
+function showReadme() {
+  readmeShown = 'loading';
+  api('readme').then(function (r) {
+    if (info && info.status !== 'building') return;
+    readmeShown = 'shown';
+    $('article').hidden = false; $('start').hidden = true;
+    var box = $('article'); box.textContent = '';
+    var head = el('div', 'p mono muted', r.source); box.append(head);
+    var gh = el('a', 'ghost', 'Open on GitHub ↗'); gh.href = r.url; gh.target = '_blank'; gh.rel = 'noopener'; gh.style.marginTop = '8px'; box.append(gh);
+    var md = el('div', 'md'); md.style.marginTop = '14px'; md.innerHTML = r.html; box.append(md);
+  }).catch(function () { readmeShown = 'none'; });
+}
 var sid = (function () { try { var k = 'helpdock-sid'; var v = localStorage.getItem(k); if (!v) { v = crypto.randomUUID(); localStorage.setItem(k, v); } return v; } catch (e) { return crypto.randomUUID(); } })();
 
 function api(path, opts) {
@@ -274,12 +302,14 @@ function boot() {
     $('title').textContent = 'Ask the ' + s.label + ' docs';
     if (s.status === 'building') {
       var p = s.progress || { files: 0 };
-      setStatus('Reading…');
-      $('loadmsg').textContent = 'Reading ' + s.label + ' from GitHub…' + (p.files ? ' ' + p.files + ' Markdown files so far' : '');
+      setStatus('Indexing…');
+      $('loadmsg').textContent = 'Indexing the docs for search' + (p.files ? ': ' + p.files + ' pages so far' : '') + '. Here is the README meanwhile.';
       $('loading').hidden = false;
-      return setTimeout(boot, 1200);
+      if (!readmeShown && s.kind === 'repo') showReadme();
+      return setTimeout(boot, 1500);
     }
     $('loading').hidden = true;
+    if (readmeShown === 'shown' && !location.hash) { showView('answers', true); }
     if (s.status === 'error') {
       setStatus('Unavailable', true);
       $('fatal').hidden = false;
