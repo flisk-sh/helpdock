@@ -30,7 +30,7 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
 
 ## Online
 
-The online help center is at **https://helpdock.flisk.sh** (Render web service + Render Postgres, from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)). [DEPLOY.md](DEPLOY.md) has the steps, the DNS record and the limits.
+Helpdock can run online for free at **helpdock.flisk.sh**: a Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)) with a Neon free Postgres. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
 
 ## API
 

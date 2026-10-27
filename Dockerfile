@@ -1,9 +1,10 @@
 # Production image for Helpdock online (Render, or any container host). `flisk up` does not use this file: locally,
 # Flisk builds its own images from services/*/*/service.json.
 #
-# One image, two commands:
-#   default   bun src/index.ts                         the agent (page, /turn, /search, /docs)
-#   migrate   node migrator/.../prisma migrate deploy  run before each deploy (Render: preDeployCommand)
+# Commands in the image:
+#   start     (default) migrate, then the agent        for hosts with no pre-deploy step (Render free)
+#   migrate   node migrator/.../prisma migrate deploy  on its own, for a host that runs it before each deploy
+#   bun src/index.ts                                   the agent alone (page, /turn, /search, /docs)
 
 FROM oven/bun:1.2-slim AS bun
 
@@ -30,11 +31,12 @@ WORKDIR /app
 COPY --from=build --chown=node:node /build/agent ./
 COPY --from=build --chown=node:node /build/migrator ./migrator
 RUN printf '#!/bin/sh\nset -e\ncd /app/migrator\nexec node node_modules/prisma/build/index.js migrate deploy\n' \
-      > /usr/local/bin/migrate && chmod +x /usr/local/bin/migrate
+      > /usr/local/bin/migrate && chmod +x /usr/local/bin/migrate \
+ && printf '#!/bin/sh\nset -e\nmigrate\ncd /app\nexec bun src/index.ts\n' > /usr/local/bin/start && chmod +x /usr/local/bin/start
 
 USER node
 ENV PORT=10000
 EXPOSE 10000
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
   CMD bun -e "fetch('http://localhost:'+process.env.PORT+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
-CMD ["bun", "src/index.ts"]
+CMD ["start"]

@@ -1,28 +1,39 @@
-# Deploy Helpdock at helpdock.flisk.sh
+# Deploy Helpdock at helpdock.flisk.sh (free)
 
-Helpdock online is one Render web service (the `Dockerfile` at the repository root) and one Render Postgres database, both declared in [`render.yaml`](render.yaml). The DNS for flisk.sh is on Cloudflare.
+Helpdock online is one Render web service on the free plan (the `Dockerfile` at the repository root, declared in [`render.yaml`](render.yaml)) and one Neon Postgres database on Neon's free plan. The DNS for flisk.sh is on Cloudflare.
 
-Cost at the plans in `render.yaml`: the Starter web service and the basic-256mb database are paid plans; check Render's pricing page for the current prices before you create them.
+What free means here (checked 2026-10-27; providers change their free tiers, so re-check before relying on it):
 
-## 1. Create the Blueprint on Render
+- **Render free web service:** sleeps after 15 minutes without traffic; the next visit wakes it in about a minute. 750 free instance hours per workspace per month. Custom domains are allowed. https://render.com/docs/free
+- **Neon free Postgres:** permanent, 1 GB storage, 100 compute-hours per month, suspends after 5 idle minutes and wakes on the next query. No card. https://neon.com/pricing
+- Render's own free Postgres is not used: it is deleted 30 days after creation.
 
-1. Sign in at https://dashboard.render.com with the account that should own Helpdock, and connect GitHub access to `flisk-sh/helpdock` if Render asks.
-2. **New → Blueprint**, pick `flisk-sh/helpdock`, branch `main`.
-3. Render shows the service `helpdock` and the database `helpdock-db`. It asks for `ANTHROPIC_API_KEY`:
-   - leave it empty to run without a model (answers quote the docs, still cited), or
-   - paste a key from https://console.anthropic.com. Answers are then written by `claude-haiku-5-5` (change with `HELPDOCK_MODEL`). Set a monthly spend limit on that key; the app allows 60 questions per visitor address per hour (`HELPDOCK_TURNS_PER_HOUR`).
-4. **Apply.** Render creates the database, builds the image, runs `migrate` (Prisma `migrate deploy`) before the service starts, and checks `/ready`.
-5. When the deploy is live, open the `onrender.com` URL Render shows (for example `https://helpdock.onrender.com/`) and ask a question. The first start loads the seven starter pages.
+For a launch day with real traffic, the sleep is the cost of free: switch the web service to a paid plan for that day (`plan: starter` in `render.yaml`) and back afterwards.
 
-## 2. Point helpdock.flisk.sh at it
+## 1. Create the database on Neon
 
-1. In Render: service `helpdock` → **Settings → Custom Domains**. `helpdock.flisk.sh` is already listed from `render.yaml`; Render shows the target it wants, normally `helpdock.onrender.com`.
-2. In Cloudflare: zone `flisk.sh` → **DNS → Add record**:
-   - Type `CNAME`, Name `helpdock`, Target the value from Render (`helpdock.onrender.com`).
-   - Proxy status **DNS only** (grey cloud). Render issues the TLS certificate itself, and the app reads the visitor address from Render's `X-Forwarded-For` (`HELPDOCK_PROXY=last-forwarded`). If you turn the Cloudflare proxy on later, also set `HELPDOCK_PROXY=cloudflare` and restrict the origin to Cloudflare, or rate limits key on Cloudflare's addresses.
-3. Back in Render, click **Verify** next to the domain. The certificate is usually issued within minutes.
+1. Sign up at https://neon.tech (GitHub sign-in works) and create a project, for example `helpdock`, in **AWS Europe (Frankfurt)** to sit next to the Render region.
+2. On the project dashboard, **Connect** → pick the role and the database, turn **Connection pooling off** (Prisma migrations need the direct connection), and copy the connection string. It looks like `postgresql://USER:PASSWORD@ep-....eu-central-1.aws.neon.tech/neondb?sslmode=require`.
+   - If the string ends in `&channel_binding=require`, remove that part; keep `?sslmode=require`.
 
-## 3. Check it
+## 2. Create the Blueprint on Render
+
+1. https://dashboard.render.com → **New → Blueprint** → `flisk-sh/helpdock`, branch `main`.
+2. Render lists one service, `helpdock`, on the **Free** plan. It asks for:
+   - `DATABASE_URL`: paste the Neon connection string.
+   - `ANTHROPIC_API_KEY`: leave empty to run without a model (answers quote the docs, still cited), or paste a key with a monthly spend limit. Answers are then written by `claude-haiku-5-5`.
+3. **Apply.** Render builds the image and starts it. On every start the container applies the migrations (`migrate`, Prisma `migrate deploy`), then starts the agent; the first start also loads the seven starter pages. Render waits for `/ready`.
+4. Open the `onrender.com` URL Render shows (for example `https://helpdock.onrender.com/`) and ask a question.
+
+## 3. Point helpdock.flisk.sh at it
+
+1. In Render: service `helpdock` → **Settings → Custom Domains**. `helpdock.flisk.sh` is listed from `render.yaml`; Render shows the target, normally `helpdock.onrender.com`.
+2. In Cloudflare: zone `flisk.sh` → **DNS → Add record**: type `CNAME`, name `helpdock`, target the value from Render, proxy status **DNS only** (grey cloud).
+   - Render issues the TLS certificate (Let's Encrypt or Google Trust Services; both are allowed by flisk.sh's CAA records).
+   - The app reads the visitor address from Render's `X-Forwarded-For` (`HELPDOCK_PROXY=last-forwarded`). If you turn the Cloudflare proxy on later, also set `HELPDOCK_PROXY=cloudflare`, or rate limits key on Cloudflare's addresses.
+3. Back in Render, click **Verify** next to the domain.
+
+## 4. Check it
 
 ```bash
 curl -s https://helpdock.flisk.sh/ready
@@ -32,11 +43,11 @@ curl -s https://helpdock.flisk.sh/ready
 curl -s -X POST https://helpdock.flisk.sh/turn -H 'content-type: application/json' -H 'x-session-id: smoke' -d '{"input":"How do I run Flisk on Windows?"}'
 ```
 
-The first should print `{"ready":true,...}`, the second a reply with `sources`.
+The first prints `{"ready":true,...}` (after up to a minute if the service was asleep), the second a reply with `sources`.
 
 ## Add or replace docs
 
-Writes need the admin token Render generated: service `helpdock` → **Environment** → `HELPDOCK_ADMIN_TOKEN` (reveal it).
+Writes need the admin token Render generated: service `helpdock` → **Environment** → `HELPDOCK_ADMIN_TOKEN`.
 
 ```bash
 curl -s -X POST https://helpdock.flisk.sh/docs -H "authorization: Bearer $HELPDOCK_ADMIN_TOKEN" -H 'content-type: application/json' -d "$(jq -n --arg m "$(cat billing.md)" '{source:"billing.md", markdown:$m}')"
@@ -49,4 +60,4 @@ Without the token `POST /docs` answers 403 (the image sets `NODE_ENV=production`
 - Online: the page, `POST /turn`, `GET /session`, `GET /search`, and `POST /docs` (admin only).
 - Not online: the MCP server (`services/agents/tools`). It stays a local tool you run with `flisk up`; point its `AGENT_URL` at `https://helpdock.flisk.sh` to ask the online help center from Claude Code.
 - Limits: 500 characters per question, 60 questions per hour and 300 searches per minute per visitor address, 64 KB request bodies (2 MB for `/docs`), the last 100 messages per session.
-- Rate limits are counted in memory, per instance. They reset on each deploy, and two instances would each count separately; keep one instance, or move the counter to Postgres before scaling out.
+- Rate limits are counted in memory. They reset whenever the free service sleeps or redeploys; that is acceptable for a demo, not for abuse protection under load.
