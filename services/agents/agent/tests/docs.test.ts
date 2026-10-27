@@ -110,6 +110,7 @@ describe('cleanHeading', () => {
   it('reduces links, emphasis and attribute lists to text', () => {
     expect(cleanHeading('[uv-installer](./uv-installer)')).toBe('uv-installer');
     expect(cleanHeading('**Install** it {#install}')).toBe('Install it');
+    expect(cleanHeading('Dependency Injection { #dependency-injection }')).toBe('Dependency Injection');
     expect(cleanHeading('The [API][api] ##')).toBe('The API');
   });
 });

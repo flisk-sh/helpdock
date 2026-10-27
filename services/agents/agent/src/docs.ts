@@ -47,7 +47,7 @@ export function cleanHeading(heading: string): string {
     .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
     .replace(/\s+#+\s*$/, '')
-    .replace(/\s*\{[#.][^}]*\}\s*$/, '') // MkDocs attribute lists: "## Install {#install}"
+    .replace(/\s*\{\s*[#.][^}]*\}\s*$/, '') // MkDocs attribute lists: "## Install {#install}", "{ #install }"
     .trim();
 }
 
