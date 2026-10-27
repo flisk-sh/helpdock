@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiPrompt, chunkMarkdown, cleanSnippet, extractiveAnswer, ftsQuery, type SearchHit } from '../src/docs';
+import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -22,7 +22,9 @@ describe('chunkMarkdown', () => {
   });
 
   it('falls back to the file name when there is no # heading', () => {
-    expect(chunkMarkdown('port-in-use.md', 'Stop the other process.')[0].title).toBe('port in use');
+    expect(chunkMarkdown('port-in-use.md', 'Stop the other process.')[0].title).toBe('Port in use');
+    expect(chunkMarkdown('docs/getting-started/index.md', 'x')[0].title).toBe('Getting started');
+    expect(chunkMarkdown('a.md', '```py\n# not a title\n```\n\n# Real title\n\nx')[0].title).toBe('Real title');
   });
 
   it('ignores headings inside fenced code', () => {
@@ -54,11 +56,13 @@ describe('answers', () => {
     );
   });
 
-  it('extractiveAnswer quotes the top three hits with citations', () => {
-    const a = extractiveAnswer('q', [hit(1), hit(2), hit(3), hit(4)]);
-    expect(a.reply).toContain('text 1 [1]');
-    expect(a.reply).toContain('text 3 [3]');
+  it('extractiveAnswer cites the top three hits, with excerpts and links', () => {
+    const a = extractiveAnswer('q', [hit(1), hit(2, { body: 'Body two.' }), hit(3), hit(4)], (h) => `https://x/${h.source}`);
     expect(a.sources.map((s) => s.n)).toEqual([1, 2, 3]);
+    expect(a.sources[0].excerpt).toBe('text 1'); // no body: the cleaned snippet
+    expect(a.sources[1].excerpt).toBe('Body two.');
+    expect(a.sources[2].url).toBe('https://x/page-3.md');
+    expect(a.reply).toContain('[2] Page 2 › Section 2\nBody two.');
   });
 
   it('extractiveAnswer says so when nothing matches', () => {
@@ -68,17 +72,18 @@ describe('answers', () => {
     });
   });
 
-  it('aiPrompt carries the question and the numbered passages', () => {
-    const p = aiPrompt('why?', [hit(1), hit(2, { section: '' })], 'https://helpdock.flisk.sh/');
+  it('aiPrompt carries the question and the numbered passages, with links when known', () => {
+    const sources = toSources('why?', [hit(1), hit(2, { section: '' })], (h) => (h.id === 1 ? 'https://gh/p1' : undefined));
+    const p = aiPrompt('why?', sources, 'https://helpdock.flisk.sh/');
     expect(p).toContain('help center at https://helpdock.flisk.sh/');
     expect(p).toContain('Question: why?');
-    expect(p).toContain('[1] Page 1 › Section 1 (page-1.md)\ntext 1');
+    expect(p).toContain('[1] Page 1 › Section 1 (https://gh/p1)\ntext 1');
     expect(p).toContain('[2] Page 2 (page-2.md)\ntext 2');
   });
 
   it('aiPrompt stays short enough for a prefill URL', () => {
     const long = hit(1, { snippet: 'x'.repeat(5000) });
-    const p = aiPrompt('q', [long, hit(2, { snippet: 'y'.repeat(5000) })], 'https://h');
+    const p = aiPrompt('q', toSources('q', [long, hit(2, { snippet: 'y'.repeat(5000) })]), 'https://h');
     expect(p.length).toBeLessThanOrEqual(6000);
     expect(p).toContain('[1]');
     expect(p).not.toContain('[2]');
@@ -98,5 +103,73 @@ describe('ftsQuery', () => {
   it('is null when only stop words are left', () => {
     expect(ftsQuery('how do I?')).toBeNull();
     expect(ftsQuery('   ')).toBeNull();
+  });
+});
+
+describe('cleanHeading', () => {
+  it('reduces links, emphasis and attribute lists to text', () => {
+    expect(cleanHeading('[uv-installer](./uv-installer)')).toBe('uv-installer');
+    expect(cleanHeading('**Install** it {#install}')).toBe('Install it');
+    expect(cleanHeading('The [API][api] ##')).toBe('The API');
+  });
+});
+
+describe('excerpt', () => {
+  it('takes the start of a long block after a one-line lead-in', () => {
+    const code = '```sh\n' + Array.from({ length: 80 }, (_, i) => `echo line ${i}`).join('\n') + '\n```';
+    const e = excerpt(`Install uv with the installer.\n\n${code}`, 'install uv');
+    expect(e.startsWith('Install uv with the installer.\n\n```sh\necho line 0')).toBe(true);
+    expect(e.endsWith('…\n```')).toBe(true);
+    expect(e.length).toBeLessThan(1200);
+  });
+
+  const body = [
+    'uv is fast.',
+    'To install it, run the installer:',
+    '```sh\ncurl -LsSf https://astral.sh/uv/install.sh | sh\n```',
+    'Then check the version.',
+    'Unrelated closing words.',
+  ].join('\n\n');
+
+  it('starts at the block that matches the question, with its lead-in for a code block', () => {
+    const e = excerpt(body, 'how do I install uv with curl');
+    expect(e.startsWith('To install it, run the installer:')).toBe(true);
+    expect(e).toContain('```sh\ncurl -LsSf');
+  });
+
+  it('matches longer words by their first letters', () => {
+    expect(excerpt('Alpha.\n\nInstalling takes a minute.', 'installation')).toBe('Installing takes a minute.');
+  });
+
+  it('stays under the size, cutting a long first block at a sentence', () => {
+    const long = 'First sentence here. '.repeat(80);
+    const e = excerpt(long, 'sentence', 200);
+    expect(e.length).toBeLessThanOrEqual(202);
+    expect(e.endsWith('. …') || e.endsWith('…')).toBe(true);
+    expect(excerpt('', 'x')).toBe('');
+  });
+
+  it('keeps a code block whole', () => {
+    expect(excerpt('```\na\nb\n```', 'a')).toBe('```\na\nb\n```');
+  });
+
+  it('queryWords drops stop words and duplicates', () => {
+    expect(queryWords('How do I install, install UV?')).toEqual(['install', 'uv']);
+  });
+});
+
+describe('dedupeHits', () => {
+  it('keeps one hit per title and section, the newest of equal copies, in the first one\'s place', () => {
+    const v = (source: string, rank: number, section = 'Sampling') => hit(1, { source, rank, title: 'Spec', section });
+    const out = dedupeHits([v('spec/2025-03-26/s.md', 5), hit(9, { title: 'Other', section: 'x', rank: 4 }), v('spec/2025-11-25/s.md', 5), v('spec/2024-11-05/s.md', 4.99)]);
+    expect(out.map((h) => [h.title, h.source])).toEqual([
+      ['Spec', 'spec/2025-11-25/s.md'],
+      ['Other', 'page-9.md'],
+    ]);
+  });
+
+  it('keeps a clearly better ranked copy even if its path is older', () => {
+    const out = dedupeHits([hit(1, { title: 'T', section: 'S', source: 'a/old.md', rank: 10 }), hit(2, { title: 'T', section: 'S', source: 'b/new.md', rank: 5 })]);
+    expect(out.map((h) => h.source)).toEqual(['a/old.md']);
   });
 });

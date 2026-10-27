@@ -17,6 +17,9 @@ services:
     domains:
       - helpdock.flisk.sh
     envVars:
+      # Any public GitHub repository at /owner/repo, and the landing page at /.
+      - key: HELPDOCK_REPOS
+        value: "1"
       - key: HELPDOCK_PUBLIC_URL
         value: https://helpdock.flisk.sh/
       - key: HELPDOCK_PROXY

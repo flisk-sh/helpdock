@@ -21,6 +21,10 @@ export interface DocStore {
   /** Adds or replaces every section of one page; returns the number of sections. */
   upsert(source: string, markdown: string): Promise<number>;
   count(): Promise<number>;
+  /** Every page: its source path, title and number of sections, sorted by path. */
+  pages(): Promise<Array<{ source: string; title: string; sections: number }>>;
+  /** One page's sections in order, or null when there is no such page. */
+  page(source: string): Promise<{ source: string; title: string; sections: Array<{ section: string; body: string }> } | null>;
 }
 
 export interface Stores {

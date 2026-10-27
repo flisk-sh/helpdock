@@ -1,14 +1,16 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { aiPrompt, type Answer, extractiveAnswer } from './docs';
+import { aiPrompt, type Answer, extractiveAnswer, type LinkFor } from './docs';
+import { docPriority, parseRepoPath, type RepoRef } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
+import { BusyError, RepoCache, type RepoEntry, repoLink } from './repos';
 import { seedPages } from './seed-docs.generated';
-import type { Checkpoint } from './store';
+import type { Checkpoint, DocStore, SessionStore } from './store';
 import { createPostgresStores } from './store-postgres';
 import { createSqliteStores } from './store-sqlite';
-import { page } from './ui';
+import { centerPage, EXAMPLE_REPOS, landingPage } from './ui';
 
 // Contract with Flisk (see docs/agents/ai-agents.md):
 //   AGENT_DURABILITY  postgres
@@ -24,7 +26,12 @@ import { page } from './ui';
 //   HELPDOCK_PROXY          none (default), last-forwarded (Render) or cloudflare: where the client address comes
 //                           from, so rate limits key on the real visitor (see parseProxyMode in guard.ts)
 //   HELPDOCK_TURNS_PER_HOUR questions per client address per hour (default 60)
-//   HELPDOCK_PUBLIC_URL     the page's public address, named in the prompt visitors take to their own AI
+//   HELPDOCK_PUBLIC_URL     the site's public address, named in the prompt visitors take to their own AI
+//   HELPDOCK_REPOS          1: serve a help center for any public GitHub repository at /owner/repo, and a landing
+//                           page at / ("replace github.com with helpdock.flisk.sh"). Off: / is this help center
+//   HELPDOCK_REPO_BUILDS_PER_HOUR new repositories one client address may have built per hour (default 10)
+//   HELPDOCK_PREWARM        comma-separated owner/repo list built at start, so the landing page's examples open at
+//                           once (default: the examples on the landing page)
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
 
 const PORT = Number(process.env.PORT || 3000);
@@ -38,7 +45,11 @@ const MAX_BODY_BYTES = 64 * 1024;
 const MAX_DOC_BYTES = 2 * 1024 * 1024;
 const turnLimit = new RateLimiter(Number(process.env.HELPDOCK_TURNS_PER_HOUR || 60), 60 * 60 * 1000);
 const readLimit = new RateLimiter(300, 60 * 1000);
-const pageHeaders = securityHeaders(page);
+const REPOS = process.env.HELPDOCK_REPOS === '1';
+const buildLimit = new RateLimiter(Number(process.env.HELPDOCK_REPO_BUILDS_PER_HOUR || 10), 60 * 60 * 1000);
+const repos = new RepoCache();
+const centerHeaders = securityHeaders(centerPage);
+const landingHeaders = securityHeaders(landingPage);
 const PRODUCTION = process.env.NODE_ENV === 'production';
 // A session keeps its last 100 messages, so one long-lived visitor cannot grow a row without bound.
 const MAX_SESSION_MESSAGES = 100;
@@ -90,17 +101,33 @@ async function seedDocs(): Promise<void> {
   console.error('[agent] gave up seeding docs: help_docs is unreachable');
 }
 
-// A turn: search the docs and answer with the best passages, each cited. No model and no outside API: the reply
-// is built from the docs alone, so the same question always gets the same answer.
-async function runTurn(_checkpoint: Checkpoint, input: string, siteUrl: string): Promise<Answer & { prompt: string }> {
-  const hits = await docs.search(input);
-  return { ...extractiveAnswer(input, hits), prompt: aiPrompt(input, hits, siteUrl) };
+// One help center: the root docs (this deployment's own pages) or a GitHub repository's.
+interface Workspace {
+  docs: DocStore;
+  store: SessionStore;
+  /** "Flisk docs" or "owner/repo", for the page and the MCP tools. */
+  label: string;
+  /** The path the help center lives at: "/" or "/owner/repo/". */
+  base: string;
+  /** Only the root docs take new pages (POST /docs, admin only). */
+  writable: boolean;
+  link?: LinkFor;
+  repo?: RepoEntry;
 }
 
-// The public address of this page, for the prompt that visitors take to their own AI. HELPDOCK_PUBLIC_URL when set,
-// else the request's own host.
+const rootWorkspace: Workspace = { docs, store, label: process.env.HELPDOCK_LABEL || 'Flisk docs', base: '/', writable: true };
+
+// A turn: search the docs and answer with the best passages, each cited. No model and no outside API: the reply
+// is built from the docs alone, so the same question always gets the same answer.
+async function runTurn(ws: Workspace, input: string, site: string): Promise<Answer & { prompt: string }> {
+  const answer = extractiveAnswer(input, await ws.docs.search(input, 10), ws.link);
+  return { ...answer, prompt: aiPrompt(input, answer.sources, site + ws.base.slice(1)) };
+}
+
+// The public address of the site, for the prompt that visitors take to their own AI and the MCP address the page
+// shows. HELPDOCK_PUBLIC_URL when set, else the request's own host.
 function siteUrl(req: IncomingMessage): string {
-  if (process.env.HELPDOCK_PUBLIC_URL) return process.env.HELPDOCK_PUBLIC_URL;
+  if (process.env.HELPDOCK_PUBLIC_URL) return process.env.HELPDOCK_PUBLIC_URL.replace(/\/?$/, '/');
   const proto = String(req.headers['x-forwarded-proto'] ?? 'http').split(',')[0].trim();
   return `${proto}://${req.headers.host ?? 'localhost'}/`;
 }
@@ -144,6 +171,180 @@ function canWriteDocs(req: IncomingMessage): boolean {
   return !PRODUCTION;
 }
 
+function sendPage(req: IncomingMessage, res: ServerResponse, html: string, headers: Record<string, string>) {
+  res.statusCode = 200;
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.setHeader('cache-control', 'public, max-age=300');
+  for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
+  return res.end(req.method === 'HEAD' ? undefined : html);
+}
+
+function validSession(req: IncomingMessage): string | null {
+  const id = String(req.headers['x-session-id'] ?? '');
+  return /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
+}
+
+function repoStatus(entry: RepoEntry, site: string) {
+  const { owner, repo } = entry.ref;
+  return {
+    kind: 'repo',
+    label: `${owner}/${repo}`,
+    status: entry.status === 'ready' && !entry.stores ? 'error' : entry.status,
+    error: entry.error,
+    notFound: entry.notFound,
+    github: `https://github.com/${owner}/${repo}`,
+    sha: entry.sha,
+    files: entry.files,
+    sections: entry.sections,
+    truncated: entry.truncated,
+    progress: entry.progress,
+    mcpUrl: `${site}${owner}/${repo}/mcp`,
+  };
+}
+
+/** The repository's workspace once its index is ready, waiting up to `waitMs` for a build in progress. */
+async function repoWorkspace(entry: RepoEntry, waitMs: number): Promise<Workspace | null> {
+  if (entry.status === 'building' && !entry.stores) {
+    await Promise.race([entry.ready, new Promise((r) => setTimeout(r, waitMs))]);
+  }
+  if (!entry.stores) return null;
+  const { owner, repo } = entry.ref;
+  return {
+    ...entry.stores,
+    label: `${owner}/${repo}`,
+    base: `/${owner}/${repo}/`,
+    writable: false,
+    link: repoLink(entry),
+    repo: entry,
+  };
+}
+
+// The routes of one help center, below its base path.
+async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, res: ServerResponse, url: URL, ip: string) {
+  const site = siteUrl(req);
+
+  if (sub === 'status' && req.method === 'GET') {
+    if (ws.repo) return sendJson(res, 200, repoStatus(ws.repo, site));
+    return sendJson(res, 200, { kind: 'docs', label: ws.label, status: 'ready', mcpUrl: `${site}mcp`, sections: await ws.docs.count() });
+  }
+
+  if (sub === 'pages' && req.method === 'GET') {
+    const pages = (await ws.docs.pages()).map((p) => ({ ...p, priority: docPriority(p.source) }));
+    return sendJson(res, 200, { pages });
+  }
+
+  if (sub === 'page' && req.method === 'GET') {
+    const source = url.searchParams.get('source') ?? '';
+    const found = source ? await ws.docs.page(source) : null;
+    if (!found) return sendJson(res, 404, { error: 'no such page' });
+    return sendJson(res, 200, { ...found, url: ws.link?.({ source, section: '' } as never) });
+  }
+
+  if (sub === 'search' && req.method === 'GET') {
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const q = (url.searchParams.get('q') ?? '').slice(0, MAX_QUESTION_CHARS);
+    if (!q.trim()) return sendJson(res, 400, { error: 'q is required' });
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 5, 1), 20);
+    const hits = (await ws.docs.search(q, limit)).map(({ body: _body, ...h }) => ({ ...h, url: ws.link?.(h) }));
+    return sendJson(res, 200, { query: q, hits });
+  }
+
+  // Add or replace one page: { "source": "billing.md", "markdown": "# Billing ..." }.
+  if (sub === 'docs' && req.method === 'POST' && ws.writable) {
+    if (!canWriteDocs(req)) return sendJson(res, 403, { error: 'adding pages needs the admin token' });
+    const body = await readJson(req, MAX_DOC_BYTES);
+    const source = String(body.source ?? '').trim();
+    if (!source || source.length > 512 || typeof body.markdown !== 'string') {
+      return sendJson(res, 400, { error: 'source and markdown are required' });
+    }
+    return sendJson(res, 200, { source, sections: await ws.docs.upsert(source, body.markdown) });
+  }
+
+  // Public, read-only MCP for the visitor's own AI. Stateless Streamable HTTP: POST only.
+  if (sub === 'mcp') {
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-headers', 'content-type, accept, mcp-protocol-version');
+    res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      return res.end();
+    }
+    if (req.method !== 'POST') {
+      res.setHeader('allow', 'POST');
+      return sendJson(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
+    }
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const body = await readJson(req);
+    return handleMcp(req, res, body, {
+      name: ws.label,
+      search: (q, limit) => ws.docs.search(q.slice(0, MAX_QUESTION_CHARS), limit),
+      link: ws.link,
+    });
+  }
+
+  // Session routing: the session id comes from the x-session-id header, so several instances of one agent can
+  // share a Traefik route and each session still reaches its own checkpoint.
+  if (sub === 'turn' && req.method === 'POST') {
+    if (draining) return sendJson(res, 503, { error: 'draining' });
+    const sessionId = validSession(req);
+    if (!sessionId) return sendJson(res, 400, { error: 'x-session-id header is required (1-128 letters, digits, - or _)' });
+    const body = await readJson(req);
+    const input = String(body.input ?? '').trim();
+    if (!input) return sendJson(res, 400, { error: 'input is required' });
+    if (input.length > MAX_QUESTION_CHARS) return sendJson(res, 400, { error: `input is over ${MAX_QUESTION_CHARS} characters` });
+    const wait = turnLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const checkpoint: Checkpoint = await ws.store.load(sessionId);
+    checkpoint.messages.push({ role: 'user', content: input, at: new Date().toISOString() });
+    const { reply, sources, prompt } = await runTurn(ws, input, site);
+    checkpoint.messages.push({ role: 'agent', content: reply, sources, at: new Date().toISOString() });
+    checkpoint.messages = checkpoint.messages.slice(-MAX_SESSION_MESSAGES);
+    await ws.store.save(checkpoint);
+    return sendJson(res, 200, { sessionId, reply, sources, prompt, turns: Math.ceil(checkpoint.messages.length / 2) });
+  }
+
+  if (sub === 'session' && req.method === 'GET') {
+    const sessionId = validSession(req);
+    if (!sessionId) return sendJson(res, 400, { error: 'x-session-id header is required' });
+    const checkpoint = await ws.store.load(sessionId);
+    return sendJson(res, 200, { sessionId, turns: checkpoint.messages.length / 2, messages: checkpoint.messages });
+  }
+
+  return sendJson(res, 404, { error: 'not_found' });
+}
+
+async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, res: ServerResponse, url: URL, ip: string) {
+  // /owner/repo → /owner/repo/, so the page's relative API paths resolve below the repository.
+  if (ref.rest === '' && !url.pathname.endsWith('/')) {
+    res.statusCode = 308;
+    res.setHeader('location', `/${ref.owner}/${ref.repo}/${url.search}`);
+    return res.end();
+  }
+  const sub = ref.rest.replace(/^\//, '').replace(/\/$/, '');
+  let entry: RepoEntry;
+  try {
+    entry = repos.get(ref, () => buildLimit.hit(ip) === 0);
+  } catch (err) {
+    if (!(err instanceof BusyError)) throw err;
+    if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, centerPage, centerHeaders);
+    res.setHeader('retry-after', '5');
+    const message = err.message === 'limit' ? 'You have opened many new repositories this hour; try again later.' : 'Busy reading other repositories; try again in a few seconds.';
+    return sendJson(res, 503, { status: 'busy', error: message });
+  }
+  // The page renders at once and follows the build through /status.
+  if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, centerPage, centerHeaders);
+  if (sub === 'status') return sendJson(res, 200, repoStatus(entry, siteUrl(req)));
+  const ws = await repoWorkspace(entry, sub === 'mcp' ? 40_000 : 20_000);
+  if (!ws) {
+    const status = entry.status === 'building' ? 503 : entry.notFound ? 404 : 502;
+    if (status === 503) res.setHeader('retry-after', '3');
+    return sendJson(res, status, { status: entry.status, error: entry.error ?? 'Still reading the repository.' });
+  }
+  return serveWorkspace(ws, sub, req, res, url, ip);
+}
+
 const server = createServer(async (req, res) => {
   inFlight++;
   res.on('close', () => inFlight--);
@@ -152,95 +353,24 @@ const server = createServer(async (req, res) => {
   res.setHeader('x-content-type-options', 'nosniff');
 
   try {
-    if (url.pathname === '/health') {
-      return sendJson(res, 200, { status: 'ok', service: 'agent', draining });
-    }
-
-    if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
-      res.statusCode = 200;
-      res.setHeader('content-type', 'text/html; charset=utf-8');
-      res.setHeader('cache-control', 'public, max-age=300');
-      for (const [name, value] of Object.entries(pageHeaders)) res.setHeader(name, value);
-      return res.end(req.method === 'HEAD' ? undefined : page);
-    }
-
-    if (url.pathname === '/search' && req.method === 'GET') {
-      const wait = readLimit.hit(ip);
-      if (wait) return tooMany(res, wait);
-      const q = (url.searchParams.get('q') ?? '').slice(0, MAX_QUESTION_CHARS);
-      if (!q.trim()) return sendJson(res, 400, { error: 'q is required' });
-      const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 5, 1), 20);
-      return sendJson(res, 200, { query: q, hits: await docs.search(q, limit) });
-    }
-
-    // Add or replace one page: { "source": "billing.md", "markdown": "# Billing ..." }.
-    if (url.pathname === '/docs' && req.method === 'POST') {
-      if (!canWriteDocs(req)) return sendJson(res, 403, { error: 'adding pages needs the admin token' });
-      const body = await readJson(req, MAX_DOC_BYTES);
-      const source = String(body.source ?? '').trim();
-      if (!source || source.length > 512 || typeof body.markdown !== 'string') {
-        return sendJson(res, 400, { error: 'source and markdown are required' });
-      }
-      return sendJson(res, 200, { source, sections: await docs.upsert(source, body.markdown) });
-    }
-
-    // Public, read-only MCP for the visitor's own AI. Stateless Streamable HTTP: POST only.
-    if (url.pathname === '/mcp') {
-      res.setHeader('access-control-allow-origin', '*');
-      res.setHeader('access-control-allow-headers', 'content-type, accept, mcp-protocol-version');
-      res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
-      if (req.method === 'OPTIONS') {
-        res.statusCode = 204;
-        return res.end();
-      }
-      if (req.method !== 'POST') {
-        res.setHeader('allow', 'POST');
-        return sendJson(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
-      }
-      const wait = readLimit.hit(ip);
-      if (wait) return tooMany(res, wait);
-      const body = await readJson(req);
-      return handleMcp(req, res, body, { search: (q, limit) => docs.search(q.slice(0, MAX_QUESTION_CHARS), limit) });
-    }
-
+    if (url.pathname === '/health') return sendJson(res, 200, { status: 'ok', service: 'agent', draining });
     if (url.pathname === '/ready') {
       const ok = !draining && (await store.ready());
       return sendJson(res, ok ? 200 : 503, { ready: ok, durability: DURABILITY });
     }
-
-    // Session routing: the session id comes from the x-session-id header, so several instances of one agent can
-    // share a Traefik route and each session still reaches its own checkpoint.
-    if (url.pathname === '/turn' && req.method === 'POST') {
-      if (draining) return sendJson(res, 503, { error: 'draining' });
-      const sessionId = String(req.headers['x-session-id'] ?? '');
-      if (!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) {
-        return sendJson(res, 400, { error: 'x-session-id header is required (1-128 letters, digits, - or _)' });
-      }
-      const body = await readJson(req);
-      const input = String(body.input ?? '').trim();
-      if (!input) return sendJson(res, 400, { error: 'input is required' });
-      if (input.length > MAX_QUESTION_CHARS) {
-        return sendJson(res, 400, { error: `input is over ${MAX_QUESTION_CHARS} characters` });
-      }
-      const wait = turnLimit.hit(ip);
-      if (wait) return tooMany(res, wait);
-      const checkpoint = await store.load(sessionId);
-      checkpoint.messages.push({ role: 'user', content: input, at: new Date().toISOString() });
-      const { reply, sources, prompt } = await runTurn(checkpoint, input, siteUrl(req));
-      checkpoint.messages.push({ role: 'agent', content: reply, sources, at: new Date().toISOString() });
-      checkpoint.messages = checkpoint.messages.slice(-MAX_SESSION_MESSAGES);
-      await store.save(checkpoint);
-      return sendJson(res, 200, { sessionId, reply, sources, prompt, turns: Math.ceil(checkpoint.messages.length / 2) });
+    if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
+      return REPOS ? sendPage(req, res, landingPage, landingHeaders) : sendPage(req, res, centerPage, centerHeaders);
     }
-
-    if (url.pathname === '/session' && req.method === 'GET') {
-      const sessionId = String(req.headers['x-session-id'] ?? '');
-      if (!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) return sendJson(res, 400, { error: 'x-session-id header is required' });
-      const checkpoint = await store.load(sessionId);
-      return sendJson(res, 200, { sessionId, turns: checkpoint.messages.length / 2, messages: checkpoint.messages });
+    // The root docs' own help center, at /docs/ when the landing page has /. Its API is at the root either way.
+    if (REPOS && (url.pathname === '/docs/' || url.pathname === '/docs') && req.method === 'GET') {
+      return sendPage(req, res, centerPage, centerHeaders);
     }
-
-    return sendJson(res, 404, { error: 'not_found' });
+    if (REPOS) {
+      const ref = parseRepoPath(url.pathname);
+      if (ref) return await serveRepo(ref, req, res, url, ip);
+    }
+    const sub = url.pathname.replace(/^\/(docs\/)?/, '').replace(/\/$/, '');
+    return await serveWorkspace(rootWorkspace, sub === '' && url.pathname.startsWith('/docs') ? 'docs' : sub, req, res, url, ip);
   } catch (error) {
     if (error instanceof HttpError) return sendJson(res, error.status, { error: error.message });
     console.error('[agent] request failed:', error);
@@ -252,7 +382,24 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n🤖 agent agent on http://localhost:' + PORT + ' (store: ' + DURABILITY + ')');
   void seedDocs();
+  if (REPOS) void prewarm();
 });
+
+// Build the landing page's example repositories one after another, after start, so a visitor who clicks one gets
+// an index that is already there.
+async function prewarm() {
+  const list = (process.env.HELPDOCK_PREWARM ?? EXAMPLE_REPOS.join(','))
+    .split(',')
+    .map((r) => parseRepoPath(`/${r.trim()}`))
+    .filter((r): r is RepoRef & { rest: string } => r !== null);
+  for (const ref of list) {
+    try {
+      await repos.get(ref).ready;
+    } catch {
+      // Busy: a visitor's build is running; the example builds on its first visit instead.
+    }
+  }
+}
 
 // Drain on SIGTERM (flisk down, hot reload, docker stop): stop taking turns, let in-flight turns finish, then exit 0.
 // Checkpoints are written before a turn is answered, so a drained exit loses no acknowledged turn.

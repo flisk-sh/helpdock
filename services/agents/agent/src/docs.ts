@@ -15,22 +15,64 @@ export interface SearchHit {
   section: string;
   snippet: string;
   rank: number;
+  /** The whole section, when the store returns it; excerpts are cut from it. */
+  body?: string;
+}
+
+export interface Source {
+  n: number;
+  title: string;
+  section: string;
+  source: string;
+  /** Markdown: the paragraphs (or code block) of the section that best match the question. */
+  excerpt: string;
+  /** Where the section lives, when known (a GitHub file and heading). */
+  url?: string;
 }
 
 export interface Answer {
   reply: string;
-  sources: Array<{ n: number; title: string; section: string; source: string }>;
+  sources: Source[];
 }
+
+export type LinkFor = (hit: SearchHit) => string | undefined;
 
 const MAX_SECTION_CHARS = 4000;
 
+/** A heading as plain text: links and images reduced to their text, emphasis and trailing #s dropped. */
+export function cleanHeading(heading: string): string {
+  return heading
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/\s+#+\s*$/, '')
+    .replace(/\s*\{[#.][^}]*\}\s*$/, '') // MkDocs attribute lists: "## Install {#install}"
+    .trim();
+}
+
+/** A page title from its path when the page has no # heading: docs/getting-started/index.md → "Getting started". */
+export function titleFromPath(source: string): string {
+  const parts = source.replace(/\.(md|mdx|markdown)$/i, '').split('/');
+  let name = parts.pop() ?? source;
+  if (/^(index|readme)$/i.test(name) && parts.length > 0) name = parts.pop() as string;
+  const words = name.replace(/[-_]+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : source;
+}
+
 // One chunk per `#`, `##` or `###` heading. The page title is the first `#` heading, or the file name.
-// Headings inside fenced code blocks are ignored, so a shell comment is never read as a section.
+// Headings inside fenced code blocks are ignored, so a shell comment is never read as a section or the title.
 export function chunkMarkdown(source: string, markdown: string): DocChunk[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  let title = source.replace(/\.md$/i, '').replace(/[-_]/g, ' ');
-  const titleLine = lines.find((l) => /^#\s+\S/.test(l));
-  if (titleLine) title = titleLine.replace(/^#\s+/, '').trim();
+  let title = titleFromPath(source);
+  let fenced = false;
+  for (const l of lines) {
+    if (/^\s*(```|~~~)/.test(l)) fenced = !fenced;
+    else if (!fenced && /^#\s+\S/.test(l)) {
+      title = cleanHeading(l.replace(/^#\s+/, '')) || title;
+      break;
+    }
+  }
 
   const chunks: DocChunk[] = [];
   let section = '';
@@ -48,7 +90,7 @@ export function chunkMarkdown(source: string, markdown: string): DocChunk[] {
     const heading = !inFence && /^(#{1,3})\s+(.*)$/.exec(line);
     if (heading) {
       flush();
-      section = heading[1] === '#' ? '' : heading[2].trim();
+      section = heading[1] === '#' ? '' : cleanHeading(heading[2]);
       continue;
     }
     buf.push(line);
@@ -80,35 +122,155 @@ export function cleanSnippet(snippet: string): string {
     .trim();
 }
 
-function sourceList(hits: SearchHit[]): Answer['sources'] {
-  return hits.map((h, i) => ({ n: i + 1, title: h.title, section: h.section, source: h.source }));
+const MAX_EXCERPT_CHARS = 900;
+
+// A section's body as blocks: paragraphs, lists and tables split on blank lines, a fenced code block kept whole.
+function blocks(body: string): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  let inFence = false;
+  const flush = () => {
+    if (cur.join('').trim()) out.push(cur.join('\n').trim());
+    cur = [];
+  };
+  for (const line of body.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      if (!inFence) flush();
+      cur.push(line);
+      inFence = !inFence;
+      if (!inFence) flush();
+      continue;
+    }
+    if (!inFence && !line.trim()) flush();
+    else cur.push(line);
+  }
+  flush();
+  return out;
+}
+
+function matches(text: string, words: string[]): number {
+  const lower = text.toLowerCase();
+  // A word, or for longer words their first five letters, so "install" also finds "installing".
+  return words.filter((w) => lower.includes(w.length > 5 ? w.slice(0, 5) : w)).length;
+}
+
+/**
+ * The part of a section worth reading for a question: from the block that matches the most question words, the
+ * blocks that follow it, up to `max` characters. A first block longer than that is cut at a sentence. Markdown in,
+ * Markdown out.
+ */
+export function excerpt(body: string, question: string, max = MAX_EXCERPT_CHARS): string {
+  const all = blocks(body);
+  if (all.length === 0) return '';
+  const words = queryWords(question);
+  let best = 0;
+  let bestScore = -1;
+  for (const [i, b] of all.entries()) {
+    const score = matches(b, words);
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  }
+  // A match in a short lead-in ("Run:") reads better with the block it introduces, and vice versa: start one block
+  // earlier when the best block is a code block or a list right after a short paragraph.
+  if (best > 0 && /^(```|~~~|[-*] |\d+\. |\|)/.test(all[best]) && all[best - 1].length < 300) best -= 1;
+  const picked: string[] = [];
+  let size = 0;
+  for (const b of all.slice(best)) {
+    if (picked.length > 0 && size + b.length > max) {
+      // A one-line lead-in ("Install it with:") is useless without what follows: take the start of the next block.
+      if (size < 350) picked.push(clip(b, max - size));
+      break;
+    }
+    picked.push(b);
+    size += b.length;
+  }
+  let text = picked.join('\n\n');
+  // Only a single first block can still be over the size (later blocks were checked or clipped as they were added).
+  if (picked.length === 1 && text.length > max && !/^(```|~~~)/.test(text)) {
+    const cut = text.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\n'));
+    text = `${(end > max / 2 ? cut.slice(0, end + 1) : cut).trimEnd()} …`;
+  }
+  return text;
+}
+
+// The start of a block within `room` characters: whole lines of a code block (fence closed again), else whole
+// sentences.
+function clip(block: string, room: number): string {
+  const budget = Math.max(room, 240);
+  if (/^(```|~~~)/.test(block)) {
+    const lines = block.split('\n');
+    const fence = lines[0].match(/^(```|~~~)/)?.[1] ?? '```';
+    const kept: string[] = [];
+    let n = 0;
+    for (const l of lines.slice(0, -1)) {
+      if (n + l.length > budget && kept.length > 1) break;
+      kept.push(l);
+      n += l.length + 1;
+    }
+    return kept.length < lines.length - 1 ? `${kept.join('\n')}\n…\n${fence}` : block;
+  }
+  if (block.length <= budget) return block;
+  const cut = block.slice(0, budget);
+  const end = cut.lastIndexOf('\n') > budget / 2 ? cut.lastIndexOf('\n') : cut.lastIndexOf('. ') + 1;
+  return `${cut.slice(0, end > 0 ? end : budget).trimEnd()} …`;
+}
+
+/**
+ * Hits with the same page title and section collapsed to one: docs often keep a copy per version
+ * (specification/2025-06-18/..., specification/2025-11-25/...). Of equally ranked copies the one with the greater
+ * path, usually the newest version, is kept, in the place of the first.
+ */
+export function dedupeHits(hits: SearchHit[]): SearchHit[] {
+  const kept = new Map<string, SearchHit>();
+  for (const h of hits) {
+    const key = `${h.title}\u0000${h.section}`.toLowerCase();
+    const prev = kept.get(key);
+    if (!prev) kept.set(key, h);
+    else if (Math.abs(prev.rank - h.rank) <= Math.abs(prev.rank) * 0.02 && h.source > prev.source) kept.set(key, h);
+  }
+  return [...kept.values()];
+}
+
+/** Every hit as a numbered source with its excerpt and link. */
+export function toSources(question: string, hits: SearchHit[], link?: LinkFor): Source[] {
+  return hits.map((h, i) => ({
+    n: i + 1,
+    title: h.title,
+    section: h.section,
+    source: h.source,
+    excerpt: h.body !== undefined ? excerpt(h.body, question) : cleanSnippet(h.snippet),
+    url: link?.(h),
+  }));
 }
 
 // The answer: the best matching passages, each with its citation number.
-export function extractiveAnswer(question: string, hits: SearchHit[]): Answer {
+export function extractiveAnswer(question: string, hits: SearchHit[], link?: LinkFor): Answer {
   if (hits.length === 0) {
     return {
-      reply: `I couldn't find anything about "${question}" in the docs. Try other words, or ask a person on the team.`,
+      reply: `I couldn't find anything about "${question}" in the docs. Try other words, or browse the pages.`,
       sources: [],
     };
   }
-  const top = hits.slice(0, 3);
-  const lines = top.map((h, i) => `${cleanSnippet(h.snippet)} [${i + 1}]`);
-  return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources: sourceList(top) };
+  const sources = toSources(question, dedupeHits(hits).slice(0, 3), link);
+  const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''}\n${s.excerpt}`);
+  return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources };
 }
 
 const MAX_PROMPT_CHARS = 6000;
 
 // The prompt a visitor takes to their own AI (the "Ask your AI" buttons): the question, the cited passages, and the
 // rule to answer from them only. Kept under MAX_PROMPT_CHARS so it fits in a prefill URL.
-export function aiPrompt(question: string, hits: SearchHit[], siteUrl: string): string {
+export function aiPrompt(question: string, sources: Source[], siteUrl: string): string {
   const head =
     `Answer my question using only the passages below from the help center at ${siteUrl}. ` +
     'Cite each claim with its number, like [1]. If the passages do not answer it, say so.\n\n' +
     `Question: ${question}\n\nPassages:\n`;
   let body = '';
-  for (const [i, h] of hits.slice(0, 3).entries()) {
-    const passage = `\n[${i + 1}] ${h.title}${h.section ? ' › ' + h.section : ''} (${h.source})\n${cleanSnippet(h.snippet)}\n`;
+  for (const s of sources.slice(0, 3)) {
+    const passage = `\n[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''} (${s.url ?? s.source})\n${s.excerpt}\n`;
     if (head.length + body.length + passage.length > MAX_PROMPT_CHARS) break;
     body += passage;
   }
@@ -127,7 +289,12 @@ const STOP_WORDS = new Set(
 // question is never run) and OR'ed, so bm25 ranks the sections that match the most of them first. Null when nothing
 // is left to search for.
 export function ftsQuery(question: string): string | null {
+  const words = queryWords(question);
+  return words.length > 0 ? words.map((w) => `"${w}"`).join(' OR ') : null;
+}
+
+/** A question's search words: lower case, without stop words, one-letter words and duplicates. */
+export function queryWords(question: string): string[] {
   const words = (question.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 1 && !STOP_WORDS.has(w));
-  const unique = [...new Set(words)].slice(0, 32);
-  return unique.length > 0 ? unique.map((w) => `"${w}"`).join(' OR ') : null;
+  return [...new Set(words)].slice(0, 32);
 }

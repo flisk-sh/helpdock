@@ -19,35 +19,36 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 
 **Tagline** (60 characters max), chosen first:
 
-1. Your docs, as a help center that answers with sources (54)
-2. Open-source AI help center that runs on your machine (52)
-3. Drop in Markdown, get a help center your agents can ask (56)
+1. Any GitHub repo's docs as a help center and MCP server (55)
+2. Replace github.com with helpdock.flisk.sh. Instant docs. (55)
+3. Cited answers from any repo's docs, for you and your AI (55)
 
 **Description** (under 260 characters):
 
-> Point Helpdock at a folder of Markdown and get a help center that answers questions in plain words, with a link to every page it used. No API key, no model: answers quote your docs, and visitors take them to their own AI in one click, or plug the MCP endpoint into theirs. MIT, self-hosted.
+> Replace github.com with helpdock.flisk.sh and any public repo gets a help center: ask in plain words, get passages quoted from the docs with links to the exact page. Plus an MCP server per repo for your AI. No signup, no API key, open source.
 
-**Tags:** Open Source, Customer Success, Developer Tools.
+**Tags:** Developer Tools, Open Source, Artificial Intelligence.
 
 **Gallery (5):**
 
-1. The page answering "How do I fix a port that is already in use?", with citations [1] [2] under it.
-2. The same question with no API key: quoted passages, still cited.
-3. A visitor's own Claude or ChatGPT answering from Helpdock: the *Ask your AI* button, and `helpdock.flisk.sh/mcp` added as an MCP server.
-4. The terminal: `git clone … && flisk up agents`, then the page opening.
-5. The architecture: agent + Postgres full-text search + migrator + MCP server, laid out by Flisk.
+1. The URL swap: `github.com/astral-sh/uv` → `helpdock.flisk.sh/astral-sh/uv`, and the help center it opens.
+2. A question ("how do I pin a Python version?") answered with cited passages and code, linked to GitHub.
+3. "Use in your AI": `claude mcp add --transport http uv https://helpdock.flisk.sh/astral-sh/uv/mcp`, then Claude Code answering from it.
+4. *Ask your AI*: ChatGPT opened with the question and the cited passages.
+5. How it works: one GitHub API call, Markdown fetched in parallel, SQLite full-text search, no model; built and run with Flisk.
 
 ## Maker first comment
 
-> Hi, I'm one of the people behind Flisk. Help centers break in a familiar way: search finds the page, but not the answer in it. Helpdock splits your Markdown into sections, searches them with Postgres full-text search (no vector database, no embeddings to keep in sync), and answers with numbered links to the sections it used. It calls no model and needs no API key: it quotes the passages.
+> Hi! Docs on GitHub are great until you need one answer: search finds the file, not the paragraph. Helpdock turns any public repo into a help center by URL: put helpdock.flisk.sh in place of github.com. It reads the repo's Markdown, indexes it with SQLite full-text search (no embeddings, no model), and answers with the passages themselves, each linked to the exact heading on GitHub.
 >
-> If a visitor wants a written answer, they bring their own AI: one click hands the question and the cited passages to their ChatGPT or Claude, and the read-only MCP endpoint lets their assistant search the docs itself.
+> Every repo also gets an MCP endpoint, so your Claude, ChatGPT or Cursor can search those docs directly. And if you want a written answer, one click hands the question and the cited passages to your own AI; we never call one.
 >
-> One question for you: would you point this at public docs, or at internal runbooks first?
+> What repo should we try first? Drop one in the comments.
 
 ## Before launch
 
 - [x] Public repo: https://github.com/flisk-sh/helpdock (published 2026-10-27).
+- [x] Live: https://helpdock.flisk.sh (Render free plan; it sleeps after 15 idle minutes, so switch to Starter for launch day).
 - [ ] Record the gallery from a real run; no mockups.
 - [ ] Ask Product Hunt support whether a product built on Flisk, launched by Flisk's makers, counts as separate from the Flisk listing.
 - [ ] Post the night-before note to the people who already use Flisk (no vote ask).

@@ -4,6 +4,7 @@
 // Set HELPDOCK_SQLITE_PATH to a file on a persistent disk to keep them.
 import { Database } from 'bun:sqlite';
 import { chunkMarkdown, ftsQuery, type SearchHit } from './docs';
+import { docPriority } from './github';
 import type { Checkpoint, Stores } from './store';
 
 export function createSqliteStores(path: string): Stores {
@@ -51,16 +52,23 @@ export function createSqliteStores(path: string): Stores {
       async search(query: string, limit = 5): Promise<SearchHit[]> {
         const match = ftsQuery(query);
         if (!match) return [];
-        // Title and section weigh ten times the body, like the A and B weights of the Postgres index.
-        return db
+        // Title and section weigh ten times the body, like the A and B weights of the Postgres index. Three times the
+        // hits are ranked again with the file's docPriority, so user docs come before contributor notes and examples.
+        const hits = db
           .query<SearchHit>(
-            `SELECT rowid AS id, source, title, section,
+            `SELECT rowid AS id, source, title, section, body,
                     snippet(help_docs, 2, '<b>', '</b>', ' … ', 48) AS snippet,
                     -bm25(help_docs, 10.0, 10.0, 1.0) AS rank
              FROM help_docs WHERE help_docs MATCH ?
              ORDER BY rank DESC LIMIT ?`,
           )
-          .all(match, limit);
+          .all(match, limit * 3);
+        const boost = (h: SearchHit) => h.rank * (1 + 0.12 * Math.max(-4, Math.min(6, docPriority(h.source))));
+        return hits
+          .map((h) => ({ h, score: boost(h) }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit)
+          .map(({ h }) => h);
       },
       async upsert(source: string, markdown: string) {
         const rows = chunkMarkdown(source, markdown);
@@ -69,6 +77,21 @@ export function createSqliteStores(path: string): Stores {
       },
       async count() {
         return db.query<{ n: number }>('SELECT count(*) AS n FROM help_docs').get()?.n ?? 0;
+      },
+      async pages() {
+        return db
+          .query<{ source: string; title: string; sections: number }>(
+            'SELECT source, min(title) AS title, count(*) AS sections FROM help_docs GROUP BY source ORDER BY source',
+          )
+          .all();
+      },
+      async page(source: string) {
+        const rows = db
+          .query<{ title: string; section: string; body: string }>(
+            'SELECT title, section, body FROM help_docs WHERE source = ? ORDER BY rowid',
+          )
+          .all(source);
+        return rows.length > 0 ? { source, title: rows[0].title, sections: rows.map((r) => ({ section: r.section, body: r.body })) } : null;
       },
     },
   };

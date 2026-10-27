@@ -50,7 +50,7 @@ export function createPostgresStores(databaseUrl: string): Stores {
     docs: {
       async search(query: string, limit = 5): Promise<SearchHit[]> {
         const res = await pool.query(
-          `SELECT id, source, title, section,
+          `SELECT id, source, title, section, body,
                   ts_headline('english', body, q, 'MaxWords=60, MinWords=25, MaxFragments=2, FragmentDelimiter=" … "') AS snippet,
                   ts_rank(search, q) AS rank
            FROM help_docs, websearch_to_tsquery('english', $1) q
@@ -87,6 +87,18 @@ export function createPostgresStores(databaseUrl: string): Stores {
       async count() {
         const res = await pool.query('SELECT count(*)::int AS n FROM help_docs');
         return res.rows[0].n;
+      },
+      async pages() {
+        const res = await pool.query(
+          'SELECT source, min(title) AS title, count(*)::int AS sections FROM help_docs GROUP BY source ORDER BY source',
+        );
+        return res.rows;
+      },
+      async page(source: string) {
+        const res = await pool.query('SELECT title, section, body FROM help_docs WHERE source = $1 ORDER BY id', [source]);
+        return res.rows.length > 0
+          ? { source, title: res.rows[0].title, sections: res.rows.map((r) => ({ section: r.section, body: r.body })) }
+          : null;
       },
     },
   };
