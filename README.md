@@ -4,7 +4,7 @@ Your docs, as a help center that answers with sources. Point it at a folder of M
 
 - **No API key, no model.** It answers with the best matching passages, each cited. Nothing is sent to an AI provider.
 - **Bring your own AI.** Under every answer, *Ask your AI* hands the question and the cited passages to the visitor's own ChatGPT or Claude (or copies the prompt for any other). And `/mcp` is a public, read-only MCP endpoint: add `https://helpdock.flisk.sh/mcp` to Claude, ChatGPT, Cursor or Codex and the assistant searches the docs itself.
-- **No vector database.** Pages are split on headings and searched with Postgres full-text search (`websearch_to_tsquery`, `ts_rank`, `ts_headline`).
+- **No vector database.** Pages are split on headings and searched with full-text search: Postgres (`websearch_to_tsquery`, `ts_rank`) when `DATABASE_URL` is set, otherwise Bun's built-in SQLite (FTS5, bm25), which needs no database at all.
 - **Local MCP server with writes.** Run with Flisk, `services/agents/tools` also offers `add_doc`, so your coding agent can add pages.
 - **Runs on your machine.** Built and run with [Flisk](https://github.com/flisk-sh/flisk): one `flisk up` starts Postgres, the migrator, the agent and the MCP server.
 
@@ -31,7 +31,7 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
 
 ## Online
 
-Helpdock can run online for free at **helpdock.flisk.sh**: a Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)) with a Neon free Postgres. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
+Helpdock runs online for free at **helpdock.flisk.sh** on one Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)), with no database account and no AI key: without `DATABASE_URL` it uses Bun's built-in SQLite. Bring your own Postgres (Neon or any other) to keep added pages and history. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
 
 ## API
 

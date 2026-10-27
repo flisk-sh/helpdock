@@ -114,3 +114,20 @@ export function aiPrompt(question: string, hits: SearchHit[], siteUrl: string): 
   }
   return head + (body || '\n(no matching passages)\n');
 }
+
+// English words too common to search on; Postgres's english configuration drops them the same way.
+const STOP_WORDS = new Set(
+  (
+    'a an and are as at be but by can do does for from has have how i if in into is it its me my no not of on or our ' +
+    'should so that the their them then there these they this to was we what when where which who why will with you your'
+  ).split(' '),
+);
+
+// A question as an SQLite FTS5 query: its words, without stop words and duplicates, each quoted (so FTS5 syntax in a
+// question is never run) and OR'ed, so bm25 ranks the sections that match the most of them first. Null when nothing
+// is left to search for.
+export function ftsQuery(question: string): string | null {
+  const words = (question.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 1 && !STOP_WORDS.has(w));
+  const unique = [...new Set(words)].slice(0, 32);
+  return unique.length > 0 ? unique.map((w) => `"${w}"`).join(' OR ') : null;
+}

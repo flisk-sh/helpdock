@@ -1,10 +1,10 @@
 # Render Blueprint for helpdock.flisk.sh on free plans: render.com → New → Blueprint → flisk-sh/helpdock.
-# The database is a free Neon Postgres (https://neon.tech): Render asks for DATABASE_URL when the Blueprint is created;
-# paste Neon's direct connection string (it ends in ?sslmode=require). See DEPLOY.md.
-# No model and no API key: answers quote the docs, and visitors take them to their own AI (buttons, or /mcp).
+# Nothing else to sign up for: no database (the agent uses Bun's built-in SQLite when DATABASE_URL is not set) and no
+# AI key (answers quote the docs; visitors take them to their own AI with the buttons or /mcp). See DEPLOY.md.
 #
-# Free web services sleep after 15 idle minutes (the next visit waits about a minute) and have no pre-deploy command,
-# so the container applies migrations itself on every start (`start` in the Dockerfile).
+# Free web services sleep after 15 idle minutes (the next visit waits about a minute). The built-in database is in
+# memory: the starter pages load again on every start, while pages added with POST /docs and chat history last only
+# until the next sleep. To keep them, add DATABASE_URL with your own Postgres (Neon or any other) in the dashboard.
 services:
   - type: web
     name: helpdock
@@ -17,8 +17,6 @@ services:
     domains:
       - helpdock.flisk.sh
     envVars:
-      - key: DATABASE_URL
-        sync: false
       - key: HELPDOCK_PUBLIC_URL
         value: https://helpdock.flisk.sh/
       - key: HELPDOCK_PROXY

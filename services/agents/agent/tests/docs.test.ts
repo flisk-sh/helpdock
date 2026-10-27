@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiPrompt, chunkMarkdown, cleanSnippet, extractiveAnswer, type SearchHit } from '../src/docs';
+import { aiPrompt, chunkMarkdown, cleanSnippet, extractiveAnswer, ftsQuery, type SearchHit } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -83,5 +83,20 @@ describe('answers', () => {
     expect(p).toContain('[1]');
     expect(p).not.toContain('[2]');
     expect(aiPrompt('q', [], 'https://h')).toContain('(no matching passages)');
+  });
+});
+
+describe('ftsQuery', () => {
+  it('keeps the meaningful words, quoted and OR-ed', () => {
+    expect(ftsQuery('How do I run Flisk on Windows?')).toBe('"run" OR "flisk" OR "windows"');
+  });
+
+  it('never passes FTS5 syntax through and drops duplicates', () => {
+    expect(ftsQuery('ports NEAR(ports "x") OR -tilt*')).toBe('"ports" OR "near" OR "tilt"');
+  });
+
+  it('is null when only stop words are left', () => {
+    expect(ftsQuery('how do I?')).toBeNull();
+    expect(ftsQuery('   ')).toBeNull();
   });
 });

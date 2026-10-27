@@ -1,27 +1,29 @@
 # Deploy Helpdock at helpdock.flisk.sh (free)
 
-Helpdock online is one Render web service on the free plan (the `Dockerfile` at the repository root, declared in [`render.yaml`](render.yaml)) and one Neon Postgres database on Neon's free plan. The DNS for flisk.sh is on Cloudflare.
+Helpdock online is one Render web service on the free plan: the `Dockerfile` at the repository root, declared in [`render.yaml`](render.yaml). Nothing else to sign up for:
+
+- **No database account.** Without `DATABASE_URL` the agent uses Bun's built-in SQLite, in memory, with an FTS5 full-text index. The seven starter pages (from `seed-docs/`) load on every start.
+- **No AI key.** Answers quote the docs with citations. Visitors who want a written answer take it to their own AI (the *Ask your AI* buttons under each answer, or `https://helpdock.flisk.sh/mcp` added to their assistant).
 
 What free means here (checked 2026-10-27; providers change their free tiers, so re-check before relying on it):
 
 - **Render free web service:** sleeps after 15 minutes without traffic; the next visit wakes it in about a minute. 750 free instance hours per workspace per month. Custom domains are allowed. https://render.com/docs/free
-- **Neon free Postgres:** permanent, 1 GB storage, 100 compute-hours per month, suspends after 5 idle minutes and wakes on the next query. No card. https://neon.com/pricing
-- Render's own free Postgres is not used: it is deleted 30 days after creation.
+- **In-memory database:** pages added with `POST /docs` and chat history are gone after each sleep or deploy. Pages you want to keep belong in `seed-docs/` (run `bun run seed:pack` in `services/agents/agent`, commit, and Render redeploys).
 
-For a launch day with real traffic, the sleep is the cost of free: switch the web service to a paid plan for that day (`plan: starter` in `render.yaml`) and back afterwards.
+To keep added pages and history, give it a Postgres of your own: add `DATABASE_URL` (any Postgres, for example a free Neon database, https://neon.com/pricing, with its direct connection string) in the Render dashboard under **Environment**. The container then applies the migrations on start and uses Postgres instead.
 
-## 1. Create the database on Neon
+For a launch day with real traffic, switch the web service to a paid plan for that day (`plan: starter` in `render.yaml`) so it never sleeps, and back afterwards.
 
-1. Sign up at https://neon.tech (GitHub sign-in works) and create a project, for example `helpdock`, in **AWS Europe (Frankfurt)** to sit next to the Render region.
-2. On the project dashboard, **Connect** → pick the role and the database, turn **Connection pooling off** (Prisma migrations need the direct connection), and copy the connection string. It looks like `postgresql://USER:PASSWORD@ep-....eu-central-1.aws.neon.tech/neondb?sslmode=require`.
-   - If the string ends in `&channel_binding=require`, remove that part; keep `?sslmode=require`.
-
-## 2. Create the Blueprint on Render
+## 1. Create the Blueprint on Render
 
 1. https://dashboard.render.com → **New → Blueprint** → `flisk-sh/helpdock`, branch `main`.
-2. Render lists one service, `helpdock`, on the **Free** plan. It asks for one value, `DATABASE_URL`: paste the Neon connection string. There is no AI key to set: Helpdock calls no model. Answers quote the docs with citations, and visitors who want a written answer take it to their own AI (the *Ask your AI* buttons, or the MCP endpoint).
-3. **Apply.** Render builds the image and starts it. On every start the container applies the migrations (`migrate`, Prisma `migrate deploy`), then starts the agent; the first start also loads the seven starter pages. Render waits for `/ready`.
+2. Render lists one service, `helpdock`, on the **Free** plan, and the domain `helpdock.flisk.sh`. There is nothing to fill in.
+3. **Deploy Blueprint.** Render builds the image and starts it; the agent loads the starter pages and Render waits for `/ready`.
 4. Open the `onrender.com` URL Render shows (for example `https://helpdock.onrender.com/`) and ask a question.
+
+## 2. (Optional) Your own Postgres
+
+Only if you want added pages and history to survive a sleep: service `helpdock` → **Environment** → add `DATABASE_URL`. For Neon: create a project in AWS Europe (Frankfurt), **Connect** with connection pooling off, copy the string (remove `&channel_binding=require` if it is there), and save. Render redeploys, and the start command runs `migrate` before the agent.
 
 ## 3. Point helpdock.flisk.sh at it
 

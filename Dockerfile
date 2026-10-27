@@ -2,7 +2,8 @@
 # Flisk builds its own images from services/*/*/service.json.
 #
 # Commands in the image:
-#   start     (default) migrate, then the agent        for hosts with no pre-deploy step (Render free)
+#   start     (default) the agent; with DATABASE_URL    migrate first. Without it the agent uses Bun's built-in SQLite
+#             set, it runs `migrate` first               and needs no database (Render free)
 #   migrate   node migrator/.../prisma migrate deploy  on its own, for a host that runs it before each deploy
 #   bun src/index.ts                                   the agent alone (page, /turn, /search, /docs)
 
@@ -32,7 +33,7 @@ COPY --from=build --chown=node:node /build/agent ./
 COPY --from=build --chown=node:node /build/migrator ./migrator
 RUN printf '#!/bin/sh\nset -e\ncd /app/migrator\nexec node node_modules/prisma/build/index.js migrate deploy\n' \
       > /usr/local/bin/migrate && chmod +x /usr/local/bin/migrate \
- && printf '#!/bin/sh\nset -e\nmigrate\ncd /app\nexec bun src/index.ts\n' > /usr/local/bin/start && chmod +x /usr/local/bin/start
+ && printf '#!/bin/sh\nset -e\nif [ -n "$DATABASE_URL" ]; then migrate; fi\ncd /app\nexec bun src/index.ts\n' > /usr/local/bin/start && chmod +x /usr/local/bin/start
 
 USER node
 ENV PORT=10000

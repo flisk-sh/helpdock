@@ -1,16 +1,19 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { Pool } from 'pg';
-import { aiPrompt, type Answer, chunkMarkdown, extractiveAnswer, type SearchHit } from './docs';
+import { aiPrompt, type Answer, extractiveAnswer } from './docs';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
 import { seedPages } from './seed-docs.generated';
+import type { Checkpoint } from './store';
+import { createPostgresStores } from './store-postgres';
+import { createSqliteStores } from './store-sqlite';
 import { page } from './ui';
 
 // Contract with Flisk (see docs/agents/ai-agents.md):
 //   AGENT_DURABILITY  postgres
-//   DATABASE_URL      Postgres connection string injected by Flisk
+//   DATABASE_URL      Postgres connection string injected by Flisk. Without it, Helpdock uses Bun's built-in SQLite
+//                     (HELPDOCK_SQLITE_PATH, default :memory:), so an online deploy needs no database or account
 //   PORT              port to listen on
 // Helpdock settings:
 //   HELPDOCK_DOCS_DIR Markdown folder loaded on first start when help_docs is empty; without it, the pages packed
@@ -24,10 +27,8 @@ import { page } from './ui';
 //   HELPDOCK_PUBLIC_URL     the page's public address, named in the prompt visitors take to their own AI
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
 
-const DURABILITY = 'postgres';
 const PORT = Number(process.env.PORT || 3000);
 const DRAIN_TIMEOUT_MS = 10_000;
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
 
 const DOCS_DIR = process.env.HELPDOCK_DOCS_DIR;
 const ADMIN_TOKEN = process.env.HELPDOCK_ADMIN_TOKEN || undefined;
@@ -51,98 +52,10 @@ class HttpError extends Error {
   }
 }
 
-interface Checkpoint {
-  sessionId: string;
-  messages: Array<{ role: 'user' | 'agent'; content: string; at: string; sources?: Answer['sources'] }>;
-}
-
-// The flisk_agent_sessions table is created by agent-migrator before this process starts. A pool, so concurrent
-// requests never share a connection (an ingest transaction would otherwise take other requests' queries with it).
-const pool = new Pool({ connectionString: DATABASE_URL, max: Number(process.env.HELPDOCK_DB_POOL || 10) });
-pool.on('error', (err) => console.error('[agent] idle Postgres connection failed:', err.message));
-
-const store = {
-  async ready(): Promise<boolean> {
-    try {
-      await pool.query('SELECT 1');
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  async load(sessionId: string): Promise<Checkpoint> {
-    try {
-      const res = await pool.query('SELECT messages FROM flisk_agent_sessions WHERE session_id = $1', [sessionId]);
-      if (res.rows.length > 0 && res.rows[0].messages) {
-        return { sessionId, messages: res.rows[0].messages };
-      }
-      return { sessionId, messages: [] };
-    } catch (err) {
-      console.error('[agent] load checkpoint failed:', err);
-      return { sessionId, messages: [] };
-    }
-  },
-  async save(checkpoint: Checkpoint): Promise<void> {
-    await pool.query(
-      `INSERT INTO flisk_agent_sessions (session_id, messages, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (session_id) DO UPDATE
-       SET messages = EXCLUDED.messages, updated_at = NOW()`,
-      [checkpoint.sessionId, JSON.stringify(checkpoint.messages)],
-    );
-  },
-  async close(): Promise<void> {
-    try {
-      await pool.end();
-    } catch (err) {
-      console.warn('[agent] closing the Postgres pool failed:', err);
-    }
-  },
-};
-
-// The help_docs table is created by agent-migrator (prisma/migrations/*_help_docs).
-const docs = {
-  async search(query: string, limit = 5): Promise<SearchHit[]> {
-    const res = await pool.query(
-      `SELECT id, source, title, section,
-              ts_headline('english', body, q, 'MaxWords=60, MinWords=25, MaxFragments=2, FragmentDelimiter=" … "') AS snippet,
-              ts_rank(search, q) AS rank
-       FROM help_docs, websearch_to_tsquery('english', $1) q
-       WHERE search @@ q
-       ORDER BY rank DESC
-       LIMIT $2`,
-      [query, limit],
-    );
-    return res.rows.map((r) => ({ ...r, id: Number(r.id), rank: Number(r.rank) }));
-  },
-  async upsert(source: string, markdown: string): Promise<number> {
-    const chunks = chunkMarkdown(source, markdown);
-    const c = await pool.connect();
-    await c.query('BEGIN');
-    try {
-      await c.query('DELETE FROM help_docs WHERE source = $1', [source]);
-      for (const ch of chunks) {
-        await c.query('INSERT INTO help_docs (source, title, section, body) VALUES ($1, $2, $3, $4)', [
-          ch.source,
-          ch.title,
-          ch.section,
-          ch.body,
-        ]);
-      }
-      await c.query('COMMIT');
-    } catch (err) {
-      await c.query('ROLLBACK');
-      throw err;
-    } finally {
-      c.release();
-    }
-    return chunks.length;
-  },
-  async count(): Promise<number> {
-    const res = await pool.query('SELECT count(*)::int AS n FROM help_docs');
-    return res.rows[0].n;
-  },
-};
+const { store, docs } = process.env.DATABASE_URL
+  ? createPostgresStores(process.env.DATABASE_URL)
+  : createSqliteStores(process.env.HELPDOCK_SQLITE_PATH || ':memory:');
+const DURABILITY = store.kind;
 
 // The pages to load on a first start: the HELPDOCK_DOCS_DIR folder when set, else the packed starter pages.
 async function seedSource(): Promise<{ from: string; pages: Record<string, string> }> {
@@ -153,7 +66,8 @@ async function seedSource(): Promise<{ from: string; pages: Record<string, strin
   return { from: DOCS_DIR, pages };
 }
 
-// Load the seed pages once, on the first start against an empty table. Retries while Postgres is still coming up.
+// Load the seed pages into an empty table: once for Postgres, on every start for the in-memory SQLite. Retries while
+// Postgres is still coming up.
 async function seedDocs(): Promise<void> {
   let source: { from: string; pages: Record<string, string> };
   try {
@@ -336,7 +250,7 @@ const server = createServer(async (req, res) => {
 
 // Bind beyond loopback: Traefik (or Render's proxy) reaches the container over the network.
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('\n🤖 agent agent on http://localhost:' + PORT + ' (durability: ' + DURABILITY + ')');
+  console.log('\n🤖 agent agent on http://localhost:' + PORT + ' (store: ' + DURABILITY + ')');
   void seedDocs();
 });
 
