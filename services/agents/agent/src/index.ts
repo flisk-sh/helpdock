@@ -235,6 +235,7 @@ function repoStatus(entry: RepoEntry, site: string) {
     sections: entry.sections,
     truncated: entry.truncated,
     indexing: entry.indexing,
+    queued: entry.queued,
     progress: entry.progress,
     mcpUrl: `${site}${owner}/${repo}/mcp`,
   };
@@ -423,7 +424,16 @@ const server = createServer(async (req, res) => {
   res.setHeader('x-content-type-options', 'nosniff');
 
   try {
-    if (url.pathname === '/health') return sendJson(res, 200, { status: 'ok', service: 'agent', draining });
+    if (url.pathname === '/health') {
+      const mem = process.memoryUsage();
+      return sendJson(res, 200, {
+        status: 'ok',
+        service: 'agent',
+        draining,
+        memory: { rssMb: Math.round(mem.rss / 1048576), heapMb: Math.round(mem.heapUsed / 1048576) },
+        repos: repos.stats(),
+      });
+    }
     if (url.pathname === '/ready') {
       const ok = !draining && (await store.ready());
       return sendJson(res, ok ? 200 : 503, { ready: ok, durability: DURABILITY });

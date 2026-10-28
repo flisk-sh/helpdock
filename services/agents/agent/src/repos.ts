@@ -21,6 +21,8 @@ export interface RepoEntry {
   progress: { files: number; archiveBytes: number };
   /** Ready to search, while the rest of its pages are still being added. */
   indexing: boolean;
+  /** Waiting for a build slot; it starts when one frees (never refused as busy). */
+  queued: boolean;
   error: string | null;
   notFound: boolean;
   builtAt: number;
@@ -56,6 +58,8 @@ export class BusyError extends Error {}
 
 // Over the archive reader's 60 s limit with room for a CPU-starved instance to wind down and index what it read.
 const BUILD_DEADLINE_MS = 180_000;
+// A queued build waits while the process is over this share of HELPDOCK_MEMORY_MB, evicting old repositories meanwhile.
+const QUEUE_MEMORY_FACTOR = 1.3;
 const INDEX_BATCH = 50;
 
 export function repoKey(ref: RepoRef): string {
@@ -65,6 +69,8 @@ export function repoKey(ref: RepoRef): string {
 export class RepoCache {
   private entries = new Map<string, RepoEntry>();
   private building = 0;
+  /** Builds waiting for a slot, oldest first, with the index they replace. */
+  private queue: Array<{ entry: RepoEntry; previous: RepoEntry | undefined; start: () => void }> = [];
   private readonly opts: RepoCacheOptions;
 
   constructor(opts: Partial<RepoCacheOptions> = {}) {
@@ -77,9 +83,10 @@ export class RepoCache {
   }
 
   /**
-   * The entry for a repository, starting a build when there is none or it is stale. Throws BusyError when a new build
-   * would go over maxBuilds; `canBuild` lets the caller refuse a new build (a per-visitor limit) without refusing a
-   * repository that is already built.
+   * The entry for a repository, starting a build when there is none or it is stale. A build that cannot start now
+   * (maxBuilds running) waits in a queue and starts when a slot frees, so a visitor is never refused as busy.
+   * `canBuild` lets the caller refuse a new build (a per-visitor limit) without refusing a repository that is already
+   * built; that refusal throws BusyError('limit').
    */
   get(ref: RepoRef, canBuild: () => boolean = () => true): RepoEntry {
     const key = repoKey(ref);
@@ -91,17 +98,24 @@ export class RepoCache {
       // A failed build is retried after a minute, not on every request.
       if (existing.status !== 'error' || now - existing.builtAt < 60_000) return existing;
     }
-    // No new build while memory is already high: evict first, and refuse if that was not enough.
-    if (rssMb() > MEMORY_LIMIT_MB * 0.8) this.evict(true);
-    if (this.building >= this.opts.maxBuilds || rssMb() > MEMORY_LIMIT_MB * 0.8) {
-      if (existing?.status === 'ready') return existing; // stale but usable
-      throw new BusyError('busy');
-    }
     if (!canBuild()) {
       if (existing?.status === 'ready') return existing;
       throw new BusyError('limit');
     }
     return this.build(ref, key, existing);
+  }
+
+  /** Starts queued builds while slots are free. Under memory pressure it evicts, then tries again shortly. */
+  private pump() {
+    while (this.queue.length > 0 && this.building < this.opts.maxBuilds) {
+      if (rssMb() > MEMORY_LIMIT_MB * QUEUE_MEMORY_FACTOR) {
+        this.evict(true);
+        setTimeout(() => this.pump(), 3000);
+        return;
+      }
+      const next = this.queue.shift();
+      next?.start();
+    }
   }
 
   stats() {
@@ -124,6 +138,7 @@ export class RepoCache {
       truncated: previous?.truncated ?? false,
       progress: { files: 0, archiveBytes: 0 },
       indexing: false,
+      queued: true,
       error: null,
       notFound: false,
       builtAt: now,
@@ -131,8 +146,15 @@ export class RepoCache {
       ready: Promise.resolve(null as unknown as RepoEntry),
     };
     this.entries.set(key, entry);
-    this.building++;
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => {
+      start = resolve;
+    });
+    this.queue.push({ entry, previous, start });
     entry.ready = (async () => {
+      await started;
+      entry.queued = false;
+      this.building++;
       try {
         // A deadline over the reader's own limits: whatever happens inside, the build slot is freed.
         const read = await Promise.race([
@@ -186,8 +208,10 @@ export class RepoCache {
       } finally {
         this.building--;
         this.evict();
+        this.pump();
       }
     })();
+    this.pump();
     return entry;
   }
 

@@ -311,7 +311,7 @@ function followIndexing() {
 function showReadme() {
   readmeShown = 'loading';
   api('readme').then(function (r) {
-    if (info && info.status !== 'building') return;
+    if (info && info.status === 'ready') return;
     readmeShown = 'shown';
     $('article').hidden = false; $('start').hidden = true;
     var box = $('article'); box.textContent = '';
@@ -349,8 +349,10 @@ function boot() {
     $('title').textContent = 'Ask the ' + s.label + ' docs';
     if (s.status === 'building') {
       var p = s.progress || { files: 0 };
-      setStatus('Indexing…');
-      $('loadmsg').textContent = 'Indexing the docs for search' + (p.files ? ': ' + p.files + ' pages so far' : '') + '. Here is the README meanwhile.';
+      setStatus(s.queued ? 'Waiting…' : 'Indexing…');
+      $('loadmsg').textContent = s.queued
+        ? 'Waiting for its turn to be indexed (other repositories first). Here is the README meanwhile.'
+        : 'Indexing the docs for search' + (p.files ? ': ' + p.files + ' pages so far' : '') + '. Here is the README meanwhile.';
       $('loading').hidden = false;
       if (!readmeShown && s.kind === 'repo') showReadme();
       return setTimeout(boot, 1500);
@@ -379,11 +381,20 @@ function boot() {
     else if (hash === 'mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
     // No autofocus: the typing placeholder shows the kind of question to ask; a click starts.
   }).catch(function (e) {
+    // Busy or a dropped connection: keep the name and the README on screen and try again; only a real error stops.
+    var parts = base.split('/').filter(Boolean);
+    if (parts.length === 2) { $('label').textContent = parts.join('/'); $('label').href = 'https://github.com/' + parts.join('/'); }
+    if (e.status === 503 || !e.status) {
+      setStatus('Waiting…');
+      $('loadmsg').textContent = 'Waiting for its turn to be indexed. Here is the README meanwhile.';
+      $('loading').hidden = false;
+      if (!readmeShown && parts.length === 2) showReadme();
+      return setTimeout(boot, 3000);
+    }
     setStatus('Unavailable', true);
     $('loading').hidden = true;
     $('fatal').hidden = false;
-    $('fatalmsg').textContent = e.status === 503 ? 'Busy right now; retrying…' : (e.message || 'Could not load this help center.');
-    if (e.status === 503) setTimeout(function () { $('fatal').hidden = true; boot(); }, 4000);
+    $('fatalmsg').textContent = e.message || 'Could not load this help center.';
   });
 }
 
