@@ -555,6 +555,75 @@ export async function readRepoViaGit(
   }
 }
 
+/** `git ls-tree -r -z` output (`-l` adds sizes) as regular files (symlinks and submodules are not files). */
+export function parseLsTree(output: string): Array<{ path: string; size: number }> {
+  const out: Array<{ path: string; size: number }> = [];
+  for (const entry of output.split('\0')) {
+    const tab = entry.indexOf('\t');
+    if (tab < 0) continue;
+    const [mode, type, , size] = entry.slice(0, tab).trim().split(/\s+/);
+    // Without -l there is no size (git would download every file to learn it): 1 stands for "unknown, not empty".
+    if (type === 'blob' && mode?.startsWith('100')) out.push({ path: entry.slice(tab + 1), size: Number(size) || 1 });
+  }
+  return out;
+}
+
+export interface RepoTree {
+  sha: string;
+  /** The documentation files worth showing, best first within the limits (see chooseDocs). */
+  paths: Array<{ path: string; size: number }>;
+  truncated: boolean;
+}
+
+/**
+ * The repository's documentation files and commit, without downloading any file: a partial clone at depth 1 with no
+ * blobs and no checkout, then `git ls-tree`. Only the file tree crosses the network (Next.js: about 2 s), so opening a
+ * repository costs no memory beyond a list of paths; pages are fetched when someone opens them (fetchRaw).
+ */
+export async function listRepoDocs(ref: RepoRef, limits: ReadLimits = DEFAULT_LIMITS): Promise<RepoTree> {
+  const dir = await mkdtemp(join(tmpdir(), 'helpdock-tree-'));
+  const git = async (...args: string[]) => {
+    const { stdout } = await run('git', args, {
+      cwd: dir,
+      timeout: limits.timeoutMs,
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', GCM_INTERACTIVE: 'never' },
+    });
+    return stdout;
+  };
+  try {
+    try {
+      await git('clone', '--quiet', '--filter=blob:none', '--depth', '1', '--no-checkout', '--single-branch', `https://github.com/${ref.owner}/${ref.repo}.git`, 'repo');
+    } catch (err) {
+      const text = String((err as { stderr?: string }).stderr ?? err);
+      if (/not found|could not read Username|terminal prompts disabled|Authentication failed/i.test(text)) {
+        throw new RepoNotFound(`${ref.owner}/${ref.repo} is not a public GitHub repository`);
+      }
+      throw err;
+    }
+    const repo = join(dir, 'repo');
+    const sha = (await git('-C', repo, 'rev-parse', 'HEAD')).trim();
+    const files = parseLsTree(await git('-C', repo, 'ls-tree', '-r', '-z', 'HEAD'));
+    const { chosen, candidates } = chooseDocs(files.filter((f) => isDocPath(f.path)), limits);
+    const sizes = new Map(files.map((f) => [f.path, f.size]));
+    return { sha, paths: chosen.map((path) => ({ path, size: sizes.get(path) ?? 0 })), truncated: candidates > chosen.length };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** One file from raw.githubusercontent.com at a commit, normalized for display; null when it is missing or too big. */
+export async function fetchRaw(ref: RepoRef, sha: string, path: string, maxBytes = DEFAULT_LIMITS.maxFileBytes): Promise<string | null> {
+  const res = await fetch(`https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/${sha}/${encodePath(path)}`, {
+    headers: { 'user-agent': 'helpdock' },
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.length > maxBytes) return null;
+  return normalizeMarkdown(path, new TextDecoder().decode(buf));
+}
+
 /** git first, then GitHub's API, then the archive. A missing repository is final. */
 export async function readRepoDocs(
   ref: RepoRef,

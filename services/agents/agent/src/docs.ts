@@ -58,7 +58,8 @@ export function titleFromPath(source: string): string {
   const parts = source.replace(/\.(md|mdx|markdown)$/i, '').split('/');
   let name = parts.pop() ?? source;
   if (/^(index|readme)$/i.test(name) && parts.length > 0) name = parts.pop() as string;
-  const words = name.replace(/[-_]+/g, ' ').trim();
+  // Doc sites order their files with number prefixes (01-installation.mdx): the reader does not need them.
+  const words = name.replace(/^\d+[-_.]\s*/, '').replace(/[-_]+/g, ' ').trim();
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : source;
 }
 

@@ -237,7 +237,8 @@ main.main { padding:28px 0 60px; min-width:0; }
 .main .sub { color:var(--muted); margin:0 0 18px; }
 .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; }
 #ask.compact h1, #ask.compact .sub, #ask.compact .chips { display:none; }
-#ask.compact { margin-bottom:18px; }
+/* On every view but the home one the question box stays under the header while the page scrolls. */
+#ask.compact { position:sticky; top:58px; z-index:4; background:var(--bg); padding:10px 0 12px; margin:0 0 14px; }
 .chip { font:inherit; font-size:14px; padding:6px 12px; border-radius:999px; background:var(--tint); color:var(--accent); border:0; cursor:pointer; }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:0 0 18px; }
 .panel h3 { margin:0 0 8px; font-size:15px; }
@@ -280,6 +281,7 @@ details.fold.more > summary { color:var(--muted); }
 .pcard { display:block; text-decoration:none; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; transition:border-color .15s, transform .15s; }
 .pcard:hover { border-color:var(--accent); transform:translateY(-1px); }
 .pcard .ct { font-weight:650; margin-bottom:4px; overflow-wrap:anywhere; }
+.pcard.nolead .cs { display:none; }
 .pcard .cs { font-size:14px; color:var(--muted); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 @media (prefers-reduced-motion: reduce) { .pcard, details.fold > summary::before { transition:none; } }
 @media (max-width: 860px) {
@@ -376,7 +378,7 @@ function boot() {
     $('mcpjson').textContent = JSON.stringify({ mcpServers: servers }, null, 2);
     $('ask').hidden = false;
     loadPages();
-    if (s.indexing) followIndexing();
+
     var hash = decodeURIComponent(location.hash.slice(1));
     if (hash.indexOf('page=') === 0) openPage(hash.slice(5));
     else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
@@ -499,7 +501,8 @@ function loadPages() {
 function startPicks() {
   var topics = [/^(getting-started|quick-?start|introduction|intro|overview|index|readme)$/, /^install(ation|ing)?$/, /^(project-structure|structure|concepts?)$/, /^(routing|basics|usage|tutorial|guide)$/, /^(configuration|config|configuring|settings)$/, /^(deploy(ing|ment)?|production)$/, /^(api|api-reference|reference|cli)$/, /^(faq|troubleshoot(ing)?)$/];
   var repoName = (info && info.label ? info.label.split('/').pop() : '').toLowerCase();
-  var usable = function (p) { return p.summary && p.summary.length >= 40 && !/^[\w./-]+\.mdx?$/i.test(p.summary) && !/^readme$/i.test(p.title); };
+  // Without an index the pages carry no lead; the cards fetch them (see renderStart). Titles come from file names.
+  var usable = function (p) { return (!p.summary || (p.summary.length >= 40 && !/^[\w./-]+\.mdx?$/i.test(p.summary))) && !/^readme$/i.test(p.title); };
   var good = pages.filter(function (p) { return (p.priority || 0) >= 4 && p.title.length <= 40 && p.title.toLowerCase() !== repoName && usable(p); });
   var picks = [];
   topics.forEach(function (re) {
@@ -521,8 +524,10 @@ function renderStart() {
   picks.forEach(function (p) {
     var c = el('a', 'pcard'); c.href = '#page=' + encodeURIComponent(p.source);
     c.onclick = function (e) { e.preventDefault(); openPage(p.source); };
-    c.append(el('div', 'ct', p.title), el('div', 'cs', p.summary));
+    var cs = el('div', 'cs', p.summary || '');
+    c.append(el('div', 'ct', p.title), cs);
     grid.append(c);
+    if (!p.summary) api('lead?source=' + encodeURIComponent(p.source)).then(function (r) { if (r.lead) cs.textContent = r.lead; else c.classList.add('nolead'); }).catch(function () {});
   });
   box.append(grid);
   // The question box types this repository's own topics as examples.
@@ -554,11 +559,13 @@ function ask(question) {
   $('q').value = question;
   var box = $('answers'); box.textContent = '';
   box.append(el('div', 'q', question));
-  var wait = el('div', 'loading'); wait.append(el('div', 'spin'), el('span', null, 'Searching the docs…')); box.append(wait);
+  var first = info && info.kind === 'repo' && !info.indexed;
+  var wait = el('div', 'loading'); wait.append(el('div', 'spin'), el('span', null, first ? 'Indexing the docs for your first question (a few seconds)…' : 'Searching the docs…')); box.append(wait);
   $('go').disabled = true;
   api('turn', { method: 'POST', headers: { 'content-type': 'application/json', 'x-session-id': sid }, body: JSON.stringify({ input: question }) })
     .then(function (b) {
       wait.remove();
+      if (info) info.indexed = true;
       if (!b.sources.length) { box.append(el('div', 'none', 'Nothing in these docs matches that. Try other words, or browse the pages.')); return; }
       b.sources.forEach(function (s) {
         var card = el('article', 'hit');
@@ -575,7 +582,11 @@ function ask(question) {
       });
       box.append(aiRow(b.prompt));
     })
-    .catch(function (e) { wait.remove(); box.append(el('div', 'none', e.status === 429 ? 'Too many questions from here; wait a little.' : 'Something went wrong: ' + e.message)); })
+    .catch(function (e) {
+      wait.remove();
+      if (e.status === 503) { box.append(el('div', 'none', 'Still indexing this repository, asking again…')); return setTimeout(function () { ask(question); }, 3000); }
+      box.append(el('div', 'none', e.status === 429 ? 'Too many questions from here; wait a little.' : 'Something went wrong: ' + e.message));
+    })
     .finally(function () { $('go').disabled = false; });
 }
 
@@ -600,9 +611,14 @@ function openPage(source, section) {
   }).catch(function (e) { box.textContent = ''; box.append(el('div', 'none', 'Could not open this page: ' + e.message)); });
 }
 
-function showView(which, home) { $('answers').hidden = which !== 'answers'; $('article').hidden = which !== 'article'; $('ask').hidden = false; $('ask').classList.toggle('compact', which === 'article'); $('start').hidden = !home; }
+function showView(which, home) { $('answers').hidden = which !== 'answers'; $('article').hidden = which !== 'article'; $('ask').hidden = false; $('ask').classList.toggle('compact', !home); $('start').hidden = !home; }
 
 $('f').onsubmit = function (e) { e.preventDefault(); ask($('q').value); };
+// The search index is built for the first question only; start it when the visitor starts typing, so it is ready by Ask.
+var warmed = false;
+function warm() { if (warmed || !info || info.kind !== 'repo' || info.indexed) return; warmed = true; api('warm', { method: 'POST' }).catch(function () { warmed = false; }); }
+$('q').addEventListener('focus', warm);
+$('q').addEventListener('input', warm);
 $('filter').oninput = function () { renderSide($('filter').value); };
 $('mcpbtn').onclick = function () { $('mcp').hidden = !$('mcp').hidden; };
 $('copymcp').onclick = function () { copy($('mcpurl').textContent, $('copymcp')); };

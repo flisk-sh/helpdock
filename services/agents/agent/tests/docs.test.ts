@@ -24,6 +24,8 @@ describe('chunkMarkdown', () => {
   it('falls back to the file name when there is no # heading', () => {
     expect(chunkMarkdown('port-in-use.md', 'Stop the other process.')[0].title).toBe('Port in use');
     expect(chunkMarkdown('docs/getting-started/index.md', 'x')[0].title).toBe('Getting started');
+    expect(chunkMarkdown('docs/01-app/01-getting-started/01-installation.mdx', 'x')[0].title).toBe('Installation');
+    expect(chunkMarkdown('docs/01-app/index.mdx', 'x')[0].title).toBe('App');
     expect(chunkMarkdown('a.md', '```py\n# not a title\n```\n\n# Real title\n\nx')[0].title).toBe('Real title');
   });
 

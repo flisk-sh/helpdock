@@ -6,7 +6,7 @@ import { renderMarkdown } from '@flisk-sh/md2html';
 import { docPriority, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
-import { BusyError, RepoCache, type RepoEntry, repoLink } from './repos';
+import { BusyError, IndexNotReady, leadOf, RepoCache, type RepoEntry, repoLink } from './repos';
 import { seedPages } from './seed-docs.generated';
 import type { Checkpoint, DocStore, SessionStore } from './store';
 import { createPostgresStores } from './store-postgres';
@@ -234,6 +234,7 @@ function repoStatus(entry: RepoEntry, site: string) {
     files: entry.files,
     sections: entry.sections,
     truncated: entry.truncated,
+    indexed: entry.indexed,
     indexing: entry.indexing,
     queued: entry.queued,
     progress: entry.progress,
@@ -265,6 +266,15 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   if (sub === 'status' && req.method === 'GET') {
     if (ws.repo) return sendJson(res, 200, repoStatus(ws.repo, site));
     return sendJson(res, 200, { kind: 'docs', label: ws.label, status: 'ready', mcpUrl: `${site}mcp`, sections: await ws.docs.count() });
+  }
+
+  // One page's lead sentence, for the "Start here" cards of a repository whose pages are not indexed.
+  if (sub === 'lead' && req.method === 'GET') {
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const page = await renderedPage(ws, url.searchParams.get('source') ?? '');
+    res.setHeader('cache-control', 'public, max-age=3600');
+    return sendJson(res, 200, { lead: page ? leadOf(page as { sections: Array<{ body: string }> }) : '' });
   }
 
   if (sub === 'pages' && req.method === 'GET') {
@@ -407,6 +417,11 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
   // The page renders at once and follows the build through /status.
   if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, centerPage, centerHeaders);
   if (sub === 'status') return sendJson(res, 200, repoStatus(entry, siteUrl(req)));
+  // The page asks for this when the visitor starts typing a question: the index is built meanwhile, not after Ask.
+  if (sub === 'warm' && req.method === 'POST') {
+    if (readLimit.hit(ip) === 0) void repos.ensureIndex(entry).catch(() => {});
+    return sendJson(res, 202, { indexed: entry.indexed });
+  }
   const ws = await repoWorkspace(entry, sub === 'mcp' ? 40_000 : 20_000);
   if (!ws) {
     const status = entry.status === 'building' ? 503 : entry.notFound ? 404 : 502;
@@ -453,6 +468,10 @@ const server = createServer(async (req, res) => {
     return await serveWorkspace(rootWorkspace, sub === '' && url.pathname.startsWith('/docs') ? 'docs' : sub, req, res, url, ip);
   } catch (error) {
     if (error instanceof HttpError) return sendJson(res, error.status, { error: error.message });
+    if (error instanceof IndexNotReady) {
+      res.setHeader('retry-after', '3');
+      return sendJson(res, 503, { error: 'Still indexing this repository; asking again.' });
+    }
     console.error('[agent] request failed:', error);
     return sendJson(res, 500, { error: 'internal_error' });
   }

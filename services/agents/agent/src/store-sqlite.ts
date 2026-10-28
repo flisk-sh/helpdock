@@ -36,6 +36,19 @@ export function createSqliteStores(path: string): Stores {
     for (const p of pages) replacePage(p.source, p.rows);
   });
 
+  // A store that lives in memory forever (the repository help centers' shared chat sessions) forgets old sessions.
+  const prune =
+    path === ':memory:'
+      ? setInterval(() => {
+          try {
+            db.run('DELETE FROM flisk_agent_sessions WHERE updated_at < ?', new Date(Date.now() - 6 * 3600_000).toISOString());
+          } catch {
+            // The database was closed.
+          }
+        }, 3600_000)
+      : null;
+  (prune as unknown as { unref?: () => void } | null)?.unref?.();
+
   return {
     store: {
       kind: 'sqlite',
@@ -58,6 +71,7 @@ export function createSqliteStores(path: string): Stores {
         );
       },
       async close() {
+        if (prune) clearInterval(prune);
         db.close();
       },
     },

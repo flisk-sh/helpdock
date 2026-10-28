@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
+import { parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
 
 describe('parseRepoPath', () => {
   it('reads owner, repo and the rest', () => {
@@ -105,5 +105,16 @@ describe('htmlToMarkdown', () => {
 
   it('leaves code alone', () => {
     expect(htmlToMarkdown('Use `<App>` and <kbd>Ctrl</kbd>.\n```html\n<div>x</div>\n```')).toBe('Use `<App>` and Ctrl.\n```html\n<div>x</div>\n```');
+  });
+});
+
+describe('parseLsTree', () => {
+  it('keeps regular files with their sizes, not symlinks or submodules, and paths with spaces', () => {
+    const out = ['100644 blob aaa      12\tREADME.md', '120000 blob bbb      9\tdocs/link.md', '160000 commit ccc       -\tvendor/x', '100755 blob ddd    4096\tdocs/a b.md', ''].join('\u0000');
+    expect(parseLsTree(out)).toEqual([
+      { path: 'README.md', size: 12 },
+      { path: 'docs/a b.md', size: 4096 },
+    ]);
+    expect(parseLsTree('100644 blob aaa\tdocs/x.md\u0000')).toEqual([{ path: 'docs/x.md', size: 1 }]);
   });
 });
