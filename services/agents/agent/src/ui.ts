@@ -176,10 +176,6 @@ form.open { max-width:640px; }
 .stage .hero h1 { font-size:clamp(38px, 6.4vw, 72px); font-weight:800; letter-spacing:-.045em; max-width:16ch; }
 .stage .swap, .stage .ex, .stage input.field { background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.13); }
 .stage .swap .to b { background:linear-gradient(92deg, #4fd1ac, #22d3ee); -webkit-background-clip:text; background-clip:text; color:transparent; }
-.stage .demo { max-width:none; margin:48px 0 0; border:1px solid rgba(255,255,255,.12); border-bottom:0; border-radius:16px 16px 0 0; overflow:hidden; background:#0f1514; box-shadow:0 -10px 90px -20px rgba(34,211,238,.45); }
-.stage .demo .chrome { display:flex; gap:7px; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); }
-.stage .demo .chrome i { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.16); }
-.stage .demo video, .stage .demo img { border:0; border-radius:0; }
 .card { position:relative; overflow:hidden; transition:transform .15s, border-color .15s; }
 .card::before { content:""; position:absolute; left:0; right:0; top:0; height:3px; background:linear-gradient(90deg, #14b8a6, #3b82f6, #a78bfa); }
 .card:hover { transform:translateY(-2px); border-color:color-mix(in srgb, var(--accent) 50%, var(--line)); }
@@ -188,7 +184,43 @@ section.grid3 { margin-top:72px; }
 section.how > div { counter-increment:h; border-top:0; padding-top:0; }
 section.how > div::before { content:counter(h); display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #14b8a6, #3b82f6); color:#fff; font-weight:750; margin-bottom:12px; }
 .stage .hero { padding:48px 0 0; }
-@media (min-width: 980px) { .stage .hero { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); column-gap:52px; align-items:center; padding:48px 0 56px; } .stage .hero > * { grid-column:1; } .stage .hero .eyebrow { justify-self:start; } .stage .hero h1 { font-size:clamp(40px, 4.4vw, 58px); margin-top:16px; } .stage .hero p.lede { font-size:17px; } .stage .hero .demo { grid-column:2; grid-row:1 / span 5; margin:0; border-radius:16px; border-bottom:1px solid rgba(255,255,255,.12); box-shadow:0 30px 90px -30px rgba(34,211,238,.5); } .stage .hero .examples { grid-column:1 / -1; margin-top:36px; } }
+@media (min-width: 980px) { .stage .hero { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); column-gap:52px; align-items:center; padding:48px 0 56px; } .stage .hero > * { grid-column:1; } .stage .hero .eyebrow { justify-self:start; } .stage .hero h1 { font-size:clamp(40px, 4.4vw, 58px); margin-top:16px; } .stage .hero p.lede { font-size:17px; } .stage .hero .examples { grid-column:1 / -1; margin-top:36px; } }
+.reassure { margin:-6px 0 0; font-size:13px; color:var(--muted); }
+.reassure b { color:#4fd1ac; }
+.works { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; margin:22px 0 0; font-size:14px; font-weight:600; color:#e6efe9; }
+.works span { width:100%; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+.works b { display:inline-flex; align-items:center; gap:8px; font-weight:600; }
+.works b i { width:8px; height:8px; border-radius:50%; background:var(--d); }
+.sample { --ink:#17171a; --muted:#66655f; --line:#e6e3da; --code:#f3f1ec; --accent:#0d7a62; margin:40px 0 0; background:#fff; color:var(--ink); border-radius:18px; padding:18px; box-shadow:0 40px 100px -30px rgba(34,211,238,.55), 0 0 0 1px rgba(255,255,255,.08); font-size:14px; }
+.sample .top { display:flex; align-items:center; gap:10px; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:14px; }
+.sample .top em { margin-left:auto; white-space:nowrap; font-style:normal; font-size:11px; text-transform:uppercase; letter-spacing:.08em; background:var(--code); border-radius:6px; padding:3px 8px; }
+.sample .q { margin:0 0 14px auto; width:max-content; max-width:85%; background:linear-gradient(135deg, #14b8a6, #3b82f6); color:#fff; font-weight:600; border-radius:14px 14px 4px 14px; padding:9px 14px; }
+.sample .k { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 8px; }
+.sample blockquote { margin:0 0 10px; border:1px solid var(--line); border-left:3px solid #14b8a6; border-radius:10px; padding:10px 12px; }
+.sample blockquote p { margin:0 0 6px; line-height:1.5; }
+.sample blockquote a { font-size:12px; color:var(--accent); text-decoration:none; overflow-wrap:anywhere; }
+.sample blockquote a:hover { text-decoration:underline; }
+.sample blockquote code, .sample blockquote pre { font-family:ui-monospace, "SF Mono", Menlo, monospace; font-size:12.5px; background:var(--code); border-radius:6px; }
+.sample blockquote code { padding:1px 5px; }
+.sample blockquote pre { margin:0 0 6px; padding:7px 10px; white-space:pre-wrap; }
+.sample .n { display:inline-grid; place-items:center; width:18px; height:18px; border-radius:5px; background:var(--code); font-size:11px; font-weight:700; margin-right:6px; color:var(--ink); }
+.sample .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.sample .acts span { border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:12.5px; font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(4, 1fr); margin:52px 0 0; border-top:1px solid rgba(255,255,255,.1); }
+.stats div { padding:24px 20px 28px 0; }
+.stats div + div { padding-left:20px; border-left:1px solid rgba(255,255,255,.1); }
+.stats b { display:block; font-size:clamp(32px, 4.2vw, 50px); line-height:1; font-weight:800; letter-spacing:-.04em; }
+.stats span { display:block; margin-top:8px; color:var(--muted); font-size:14px; line-height:1.4; max-width:22ch; }
+section.film { margin-top:80px; }
+section.film h2 { font-size:clamp(26px, 4vw, 38px); letter-spacing:-.03em; margin:0 0 10px; }
+section.film p.sub { color:var(--muted); font-size:17px; margin:0 0 26px; max-width:60ch; }
+.kick { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--accent); margin:0 0 10px; }
+section.film .demo { max-width:none; margin:0; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#0f1514; }
+section.film .demo .chrome { display:flex; gap:7px; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); }
+section.film .demo .chrome i { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.16); }
+section.film .demo video, section.film .demo img { border:0; border-radius:0; }
+@media (max-width: 640px) { .stats { grid-template-columns:1fr 1fr; } .stats div { padding:18px 12px 20px 0; } .stats div + div { padding-left:12px; } .stats div:nth-child(3) { padding-left:0; border-left:0; } .stats div:nth-child(n+3) { border-top:1px solid rgba(255,255,255,.1); } }
+@media (min-width: 980px) { .stage .hero .sample { grid-column:2; grid-row:1 / span 7; margin:0; } .stage .hero .stats { grid-column:1 / -1; } .stage .hero { padding-bottom:0; } }
 `;
 
 const landingJs = String.raw`
@@ -223,6 +255,29 @@ document.getElementById('copytry').onclick = function () {
 document.querySelectorAll('[data-mcp]').forEach(function (el) { el.textContent = 'claude mcp add --transport http nextjs ' + location.origin + '/vercel/next.js/mcp'; });
 `;
 
+/** The MCP clients the hero names, with a colour each. */
+const CLIENTS: [string, string][] = [
+  ['Claude', '#d97757'],
+  ['ChatGPT', '#10a37f'],
+  ['Cursor', '#a1a1aa'],
+  ['Codex', '#60a5fa'],
+];
+/** The numbers under the hero, each true of every repository. */
+const STATS: [string, string][] = [
+  ['0', 'models called and API keys needed'],
+  ['1', 'MCP server per repository, at /owner/repo/mcp'],
+  ['6 h', 'at most between rebuilds from GitHub'],
+  ['MIT', 'open source, and runs on your machine'],
+];
+/** A real answer for vercel/next.js, as the help center shows it, shortened to two of its passages. */
+const GH = 'https://github.com/vercel/next.js/blob/canary/docs/01-app';
+const SAMPLE = `<figure class="sample" aria-label="A sample answer"><div class="top"><span class="mono"><span data-host>helpdock.flisk.sh</span>/vercel/next.js</span><em>Sample answer</em></div>
+<p class="q">How do I add middleware?</p>
+<p class="k">Quoted from the docs</p>
+<blockquote><p><span class="n">1</span>The <code>middleware.js</code> file convention has been <b>deprecated</b> in Next.js 16 and renamed to <code>proxy.js</code>. All functionality remains the same.</p><a href="${GH}/03-api-reference/03-file-conventions/middleware.mdx">03-file-conventions/middleware.mdx ↗</a></blockquote>
+<blockquote><p><span class="n">2</span>How to upgrade to version 16 › middleware to proxy</p><pre>mv middleware.ts proxy.ts</pre><a href="${GH}/02-guides/upgrading/version-16.mdx#middleware-to-proxy">upgrading/version-16.mdx#middleware-to-proxy ↗</a></blockquote>
+<div class="acts" aria-hidden="true"><span>Ask Claude</span><span>Ask ChatGPT</span><span>Use in your AI</span></div></figure>`;
+
 function examples(): string {
   return EXAMPLES.map(
     (e) =>
@@ -253,12 +308,18 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
       <div class="to"><a class="mono" id="tryurl" href="/vercel/next.js/"><b data-host>helpdock.flisk.sh</b>/vercel/next.js</a><button class="ghost" id="copytry" type="button">Copy</button></div>
     </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
+    <p class="reassure"><b>●</b> Free · Indexed in seconds · Nothing stored about you</p>
+    <p class="works"><span>Answers in your browser, and in</span>${CLIENTS.map(([n, c]) => `<b style="--d:${c}"><i></i>${n}</b>`).join('')}</p>
+    ${SAMPLE}
     <div class="examples">${examples()}</div>
-    <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline controls preload="metadata" aria-describedby="demo-text"></video>
-    <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
+    <div class="stats">${STATS.map(([n, t]) => `<div><b>${n}</b><span>${t}</span></div>`).join('')}</div>
   </section>
 </div></div>
 <div class="wrap">
+  <section class="film"><p class="kick">See it run</p><h2>From a GitHub address to a cited answer.</h2><p class="sub">Swap the host, ask in your own words, follow the quote back to the file, then hand the same docs to your AI.</p>
+    <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline controls preload="metadata" aria-describedby="demo-text"></video>
+    <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
+  </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
     <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><div class="codebox"><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre><button class="ghost" type="button" data-copy="[data-mcp]">Copy</button></div></div>
