@@ -74,6 +74,7 @@ describe('choosing files', () => {
     expect(docPriority('packages/x/README.md')).toBeGreaterThan(docPriority('AGENTS.md'));
     expect(docPriority('docs/install.md')).toBeGreaterThan(docPriority('agents/prompts/fix-bug.md'));
     expect(docPriority('contributing/docs/guide.md')).toBeLessThan(4);
+    expect(docPriority('docs/marketing/articles/stop-compose.md')).toBeLessThan(docPriority('docs/cheat-sheet.md'));
     expect(docPriority('docs/a.md')).toBeGreaterThan(docPriority('examples/demo/README.md'));
     expect(docPriority('docs/examples/custom.md')).toBe(docPriority('docs/custom.md'));
   });

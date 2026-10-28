@@ -122,6 +122,8 @@ export function docPriority(path: string): number {
   if (/(^|\/)(agents?|prompts?|skills?|\.?claude|copilot)\//.test(lower)) score -= 4;
   // How to contribute to the project is for its maintainers, not for people using it.
   if (/(^|\/)contributing\//.test(lower)) score -= 4;
+  // Marketing copy, outreach, launch notes, blog posts and design records talk about the product; they are not how-to.
+  if (/(^|\/)(marketing|outreach|launch|blog|posts|articles|press|rfcs?|adr|decisions|openspec)\//.test(lower)) score -= 3;
   // Example and test folders inside the docs (docs/examples/) are documentation; elsewhere they are code samples.
   if (!inDocs && /(^|\/)(examples?|samples?|tests?|benchmarks?|scripts?)\//.test(lower)) score -= 2;
   return score - Math.max(0, depth - 3);

@@ -313,3 +313,31 @@ export function summarize(body: string, max = 160): string {
   const end = cut.lastIndexOf('. ');
   return end > max / 2 ? cut.slice(0, end + 1) : `${cut.slice(0, cut.lastIndexOf(' ')).trimEnd()}…`;
 }
+
+// Two words match when equal, or for longer words when their first five letters agree (variable, variables).
+function sameWord(a: string, b: string): boolean {
+  return a === b || (a.length >= 5 && b.length >= 5 && a.slice(0, 5) === b.slice(0, 5));
+}
+
+/** The words a page's file is named by: docs/01-app/environment-variables.mdx → environment, variables. */
+export function fileWords(source: string): string[] {
+  const parts = source.toLowerCase().replace(/\.(md|mdx|markdown)$/, '').split('/');
+  let name = parts.pop() ?? '';
+  if (/^(index|readme)$/.test(name) && parts.length > 0) name = parts.pop() as string;
+  return name
+    .replace(/^\d+[-_.]/, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 1);
+}
+
+/**
+ * How much a page's name says it is about the question, as a multiplier for its rank: the share of its file-name
+ * words the question contains weighs most (middleware.mdx for "how do I add middleware"), then its title's, then the
+ * section heading's. 1 when nothing matches, up to 4 when the file, title and section all match.
+ */
+export function nameBoost(hit: Pick<SearchHit, 'source' | 'title' | 'section'>, question: string): number {
+  const words = queryWords(question);
+  if (words.length === 0) return 1;
+  const share = (list: string[]) => (list.length ? list.filter((w) => words.some((q) => sameWord(q, w))).length / list.length : 0);
+  return 1 + 1.6 * share(fileWords(hit.source)) + 0.8 * share(queryWords(hit.title)) + 0.6 * share(queryWords(hit.section));
+}

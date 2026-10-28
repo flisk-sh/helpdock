@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
+import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, fileWords, nameBoost, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -186,5 +186,31 @@ describe('summarize', () => {
     expect(summarize('One two three. Four five six seven eight nine ten.', 20)).toBe('One two three.');
     expect(summarize('Alpha beta gamma delta epsilon zeta', 20)).toBe('Alpha beta gamma…');
     expect(summarize('| a | b |\n|---|---|')).toBe('');
+  });
+});
+
+describe('nameBoost', () => {
+  const page = (source: string, title = '', section = '') => ({ source, title, section });
+
+  it('reads the words a file is named by', () => {
+    expect(fileWords('docs/01-app/03-file-conventions/middleware.mdx')).toEqual(['middleware']);
+    expect(fileWords('docs/01-app/02-guides/environment-variables.mdx')).toEqual(['environment', 'variables']);
+    expect(fileWords('docs/getting-started/index.md')).toEqual(['getting', 'started']);
+  });
+
+  it('ranks the page named after the question above others', () => {
+    const q = 'How do I add middleware?';
+    expect(nameBoost(page('docs/file-conventions/middleware.mdx', 'middleware.js'), q)).toBeGreaterThan(
+      nameBoost(page('docs/adapters/output-types.mdx', 'Output Types', 'Middleware'), q),
+    );
+    const env = 'How do I expose an environment variable to the browser?';
+    expect(nameBoost(page('docs/guides/environment-variables.mdx', 'How to use environment variables in Next.js'), env)).toBeGreaterThan(
+      nameBoost(page('docs/glossary.mdx', 'Next.js Glossary', 'Environment Variables'), env),
+    );
+  });
+
+  it('is 1 when nothing in the name matches', () => {
+    expect(nameBoost(page('docs/a.md', 'Alpha', 'Beta'), 'install')).toBe(1);
+    expect(nameBoost(page('docs/a.md'), 'how do I')).toBe(1);
   });
 });

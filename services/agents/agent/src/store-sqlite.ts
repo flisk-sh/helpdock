@@ -3,7 +3,7 @@
 // loaded again on each start, and pages added with POST /docs and chat history last until the next restart.
 // Set HELPDOCK_SQLITE_PATH to a file on a persistent disk to keep them.
 import { Database } from 'bun:sqlite';
-import { chunkMarkdown, ftsQuery, type SearchHit } from './docs';
+import { chunkMarkdown, ftsQuery, nameBoost, type SearchHit } from './docs';
 import { docPriority, htmlToMarkdown } from './github';
 import type { Checkpoint, Stores } from './store';
 
@@ -75,10 +75,14 @@ export function createSqliteStores(path: string): Stores {
              FROM help_docs WHERE help_docs MATCH ?
              ORDER BY rank DESC LIMIT ?`,
           )
-          .all(match, limit * 3);
+          .all(match, limit * 6);
         // A stub ("See Proxy.") answers nothing on its own: sections under 80 characters count for half.
+        // Then a page whose own name is the question's topic (middleware.mdx for "add middleware") comes first.
         const boost = (h: SearchHit) =>
-          h.rank * (1 + 0.12 * Math.max(-4, Math.min(6, docPriority(h.source)))) * ((h.body?.length ?? 80) < 80 ? 0.5 : 1);
+          h.rank *
+          (1 + 0.12 * Math.max(-4, Math.min(6, docPriority(h.source)))) *
+          ((h.body?.length ?? 80) < 80 ? 0.5 : 1) *
+          nameBoost(h, query);
         return hits
           .map((h) => ({ h, score: boost(h) }))
           .sort((a, b) => b.score - a.score)

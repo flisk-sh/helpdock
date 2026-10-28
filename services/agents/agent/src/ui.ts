@@ -45,7 +45,7 @@ code, pre, .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, mo
 .btn:disabled { opacity:.55; cursor:default; }
 .ghost { font:inherit; font-size:14px; font-weight:500; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .ghost:hover { border-color:var(--accent); }
-input.field { flex:1; min-width:0; font:inherit; height:48px; padding:0 16px; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink); }
+input.field { flex:1 1 auto; min-width:0; font:inherit; font-size:16px; height:48px; min-height:48px; padding:0 16px; border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink); }
 input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .row { display:flex; gap:8px; }
 .muted { color:var(--muted); }
@@ -135,7 +135,8 @@ form.open { max-width:640px; }
 .how b { display:block; margin-bottom:4px; }
 .how span { color:var(--muted); font-size:15px; }
 .err { color:var(--warn); font-size:14px; min-height:1.4em; margin-top:8px; }
-@media (max-width: 560px) { form.open .row { flex-direction:column; } }
+/* Stacked on phones: the box keeps its height (flex:1 in a column made it collapse to a sliver) and the button is full width. */
+@media (max-width: 560px) { form.open .row { flex-direction:column; } form.open input.field { flex:none; width:100%; } form.open .btn { width:100%; } }
 `;
 
 const landingJs = String.raw`
