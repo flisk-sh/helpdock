@@ -1,0 +1,306 @@
+{
+	"name": "Helpdock",
+	"icon": "services/agents/agent/brand/icon.svg",
+	"accent": "#4ade80",
+	"module": "services/agents/agent/src/video.generated.ts",
+	"style": "spaces",
+	"fps": 30,
+	"posterAt": 13,
+	"shots": [
+		{
+			"name": "github",
+			"url": "https://github.com/vercel/next.js",
+			"settle": 4,
+			"maxHeight": 1100
+		},
+		{
+			"name": "center",
+			"url": "https://helpdock.flisk.sh/vercel/next.js/",
+			"settle": 12,
+			"maxHeight": 1800,
+			"rects": {
+				"side": "#side",
+				"start": "#start",
+				"ask": "#ask"
+			}
+		},
+		{
+			"name": "answer",
+			"url": "https://helpdock.flisk.sh/vercel/next.js/",
+			"settle": 8,
+			"maxHeight": 1800,
+			"steps": [
+				{
+					"js": "document.getElementById('q').value = 'How do I add middleware?'; document.getElementById('f').requestSubmit(); for (let i = 0; i < 90; i++) { const a = document.getElementById('answers'); if (a && a.querySelector('a[href*=\"github.com\"]')) break; await new Promise((r) => setTimeout(r, 1000)); }",
+					"wait": 2
+				}
+			],
+			"rects": {
+				"answers": "#answers",
+				"card": "#answers > :nth-child(2)",
+				"source": "#answers > :nth-child(2) a[href*='github.com']",
+				"ai": "#answers > :last-child",
+				"ask": "#ask"
+			}
+		},
+		{
+			"name": "mcp",
+			"url": "https://helpdock.flisk.sh/vercel/next.js/",
+			"settle": 8,
+			"maxHeight": 1400,
+			"steps": [
+				{
+					"js": "document.getElementById('mcpbtn').click();",
+					"wait": 1
+				}
+			],
+			"rects": {
+				"mcp": "#mcp",
+				"mcpbtn": "#mcpbtn"
+			}
+		}
+	],
+	"scenes": [
+		{
+			"kind": "card",
+			"dur": 2.6,
+			"fadeOut": true,
+			"title": [
+				"Any GitHub repo's docs,",
+				"as a help center."
+			],
+			"pill": "<s>github.com</s> \u2192 <b>helpdock.flisk.sh</b>/owner/repo"
+		},
+		{
+			"kind": "browser",
+			"dur": 4.6,
+			"fadeIn": true,
+			"tab": "vercel/next.js",
+			"imgs": [
+				[
+					0,
+					"shots/github.png"
+				],
+				[
+					2.9,
+					"shots/center.png"
+				]
+			],
+			"omni": {
+				"from": "github.com/vercel/next.js",
+				"to": "helpdock.flisk.sh/vercel/next.js/",
+				"at": 0.7,
+				"dur": 1.8
+			},
+			"cam": [
+				[
+					0,
+					[
+						960,
+						540,
+						1
+					]
+				],
+				[
+					0.6,
+					[
+						720,
+						140,
+						1.7
+					]
+				],
+				[
+					2.6,
+					[
+						720,
+						140,
+						1.7
+					]
+				],
+				[
+					3.6,
+					[
+						960,
+						540,
+						1
+					]
+				]
+			],
+			"cap": [
+				[
+					0.4,
+					4.4,
+					"Replace github.com with helpdock.flisk.sh"
+				]
+			]
+		},
+		{
+			"kind": "browser",
+			"dur": 4.0,
+			"tab": "vercel/next.js docs \u00b7 Helpdock",
+			"url": "helpdock.flisk.sh/vercel/next.js/",
+			"imgs": [
+				[
+					0,
+					"shots/center.png"
+				]
+			],
+			"cam": [
+				[
+					0,
+					[
+						960,
+						540,
+						1
+					]
+				],
+				[
+					1.2,
+					"@center.start:w1.35"
+				],
+				[
+					4.0,
+					"@center.start:w1.35"
+				]
+			],
+			"hl": [
+				[
+					1.3,
+					3.8,
+					"@center.start"
+				]
+			],
+			"cap": [
+				[
+					0.3,
+					3.8,
+					"Every page of its docs, ready to browse"
+				]
+			]
+		},
+		{
+			"kind": "browser",
+			"dur": 4.8,
+			"tab": "vercel/next.js docs \u00b7 Helpdock",
+			"url": "helpdock.flisk.sh/vercel/next.js/",
+			"imgs": [
+				[
+					0,
+					"shots/center.png"
+				],
+				[
+					0.9,
+					"shots/answer.png"
+				]
+			],
+			"cam": [
+				[
+					0,
+					"@answer.ask:w1.5"
+				],
+				[
+					1.4,
+					"@answer.card:w1.4"
+				],
+				[
+					4.8,
+					"@answer.card:w1.4"
+				]
+			],
+			"hl": [
+				[
+					1.6,
+					3.1,
+					"@answer.card"
+				],
+				[
+					3.4,
+					4.6,
+					"@answer.source"
+				]
+			],
+			"cap": [
+				[
+					0.3,
+					4.6,
+					"Answers quoted from the exact page, with the link"
+				]
+			]
+		},
+		{
+			"kind": "browser",
+			"dur": 4.2,
+			"fadeOut": true,
+			"tab": "vercel/next.js docs \u00b7 Helpdock",
+			"url": "helpdock.flisk.sh/vercel/next.js/",
+			"imgs": [
+				[
+					0,
+					"shots/center.png"
+				],
+				[
+					1.3,
+					"shots/mcp.png"
+				]
+			],
+			"cursor": [
+				[
+					0.2,
+					[
+						900,
+						400
+					]
+				],
+				[
+					1.0,
+					"@mcp.mcpbtn:c"
+				]
+			],
+			"clicks": [
+				1.15
+			],
+			"cam": [
+				[
+					0,
+					[
+						960,
+						540,
+						1
+					]
+				],
+				[
+					1.6,
+					"@mcp.mcp:w1.45"
+				],
+				[
+					4.2,
+					"@mcp.mcp:w1.45"
+				]
+			],
+			"hl": [
+				[
+					1.8,
+					4.0,
+					"@mcp.mcp"
+				]
+			],
+			"cap": [
+				[
+					0.3,
+					4.0,
+					"The same docs in your AI, over MCP"
+				]
+			]
+		},
+		{
+			"kind": "card",
+			"dur": 3.4,
+			"fadeIn": true,
+			"title": [
+				"Free. No signup."
+			],
+			"sub": "No API key \u00b7 open source \u00b7 an MCP server for every repo",
+			"pill": "helpdock.flisk.sh/<b>owner/repo</b>"
+		}
+	]
+}

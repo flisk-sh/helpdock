@@ -1,0 +1,219 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Film</title>
+<!--
+  A short product film as one page with a deterministic window.seek(t), in the look of Flisk's promo films
+  (flisk-sh/flisk-video-factory): a dark stage with a fading grid and slow green and cyan glows, a real browser window
+  with real screenshots, a camera that pushes in, a glass caption pill, and gradient title cards.
+  The scenes come from film.json next to this page (render.ts passes them in as window.FILM_CONFIG).
+  Open film.html?t=4 in a browser to see one moment, or film.html?play to watch it.
+-->
+<style>
+  :root { --sans: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif; --mono: "SF Mono", ui-monospace, Menlo, monospace; --accent: #4ade80; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: var(--sans); background: #000; }
+  #bg { position: absolute; left: -400px; top: -300px; width: 2720px; height: 1680px; will-change: transform; }
+  #bg .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.075) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.075) 1px, transparent 1px);
+    background-size: 72px 72px;
+    -webkit-mask-image: radial-gradient(60% 55% at 50% 50%, #000 30%, transparent 100%); mask-image: radial-gradient(60% 55% at 50% 50%, #000 30%, transparent 100%); }
+  #bg .glow { position: absolute; border-radius: 50%; filter: blur(140px); }
+  #bg .g1 { width: 1100px; height: 800px; left: 300px; top: 250px; background: radial-gradient(circle, rgba(34,197,94,.55), rgba(34,197,94,0) 70%); }
+  #bg .g2 { width: 1000px; height: 900px; left: 1400px; top: 650px; background: radial-gradient(circle, rgba(14,165,233,.45), rgba(14,165,233,0) 70%); }
+  #bg .g3 { width: 700px; height: 600px; left: 1100px; top: 300px; background: radial-gradient(circle, rgba(168,85,247,.28), rgba(168,85,247,0) 70%); }
+  #cam { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+
+  .win { position: absolute; left: 170px; top: 90px; width: 1580px; height: 900px; border-radius: 14px; overflow: hidden; background: #fff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 40px 120px -20px rgba(0,0,0,.9), 0 0 80px -10px rgba(34,197,94,.18); }
+  .chrome { background: #dee1e6; height: 88px; position: relative; }
+  .chrome .tabs { height: 44px; display: flex; align-items: flex-end; padding-left: 90px; }
+  .chrome .tab { background: #fff; height: 36px; width: 300px; border-radius: 10px 10px 0 0; font-size: 14px; color: #333; display: flex; align-items: center; padding: 0 14px; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .chrome .tab img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .chrome .tl { position: absolute; left: 16px; top: 15px; display: flex; gap: 9px; }
+  .chrome .tl i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+  .chrome .tl i:nth-child(1) { background: #ff5f57; } .chrome .tl i:nth-child(2) { background: #febc2e; } .chrome .tl i:nth-child(3) { background: #28c840; }
+  .chrome .addr { position: absolute; left: 0; right: 0; top: 44px; height: 44px; background: #fff; display: flex; align-items: center; padding: 0 14px; gap: 14px; border-bottom: 1px solid #e3e3e3; }
+  .chrome .addr .nav { color: #888; font-size: 18px; letter-spacing: 8px; }
+  .chrome .addr .omni { flex: 1; height: 32px; border-radius: 16px; background: #f1f3f4; display: flex; align-items: center; padding: 0 16px; font-size: 17px; color: #222; white-space: pre; }
+  .omni .pre { color: #111; font-weight: 600; } .omni .rest { color: #555; } .omni s { color: #999; text-decoration-thickness: 2px; }
+  .omni .caret { display: inline-block; width: 2px; height: 20px; background: #1a73e8; margin: 0 1px; vertical-align: -4px; }
+  .page { position: absolute; left: 0; right: 0; top: 88px; bottom: 0; overflow: hidden; background: #fff; }
+  .page img { position: absolute; left: 0; top: 0; width: 1580px; display: block; }
+
+  .hl { position: absolute; border: 4px solid var(--accent); border-radius: 12px; box-shadow: 0 0 0 6px rgba(74,222,128,.18), 0 0 30px rgba(74,222,128,.45); opacity: 0; pointer-events: none; }
+  #cursor { position: absolute; width: 34px; height: 50px; left: 0; top: 0; opacity: 0; filter: drop-shadow(0 3px 4px rgba(0,0,0,.35)); }
+  #ripple { position: absolute; width: 60px; height: 60px; border-radius: 50%; border: 4px solid var(--accent); opacity: 0; margin: -30px 0 0 -30px; }
+
+  #card { position: absolute; inset: 0; background: #000; display: grid; place-items: center; text-align: center; opacity: 0; overflow: hidden; }
+  #card::before { content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px); background-size: 72px 72px;
+    -webkit-mask-image: radial-gradient(50% 50% at 50% 50%, #000, transparent); mask-image: radial-gradient(50% 50% at 50% 50%, #000, transparent); }
+  #card::after { content: ""; position: absolute; width: 1200px; height: 700px; left: 360px; top: 190px; border-radius: 50%; filter: blur(150px);
+    background: radial-gradient(circle, rgba(34,197,94,.35), rgba(14,165,233,.12) 55%, transparent 75%); }
+  #card > div { position: relative; z-index: 1; }
+  #card .logo { display: flex; align-items: center; gap: 26px; justify-content: center; }
+  #card .logo img { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 0 70px rgba(74,222,128,.45); }
+  #card .logo .word { font-size: 120px; font-weight: 800; letter-spacing: -0.05em; color: #fff; }
+  #card .t { margin-top: 34px; font-size: 64px; line-height: 1.12; font-weight: 700; letter-spacing: -0.035em;
+    background: linear-gradient(180deg, #fff 30%, #9be7c0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #card .sub { margin-top: 26px; font-size: 32px; color: #a1a1aa; line-height: 1.35; }
+  #card .pill { margin-top: 34px; display: inline-block; font-family: var(--mono); font-size: 34px; color: #fff; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); padding: 16px 32px; border-radius: 14px; }
+  #card .pill b { color: var(--accent); font-weight: 600; }
+
+  #cap { position: absolute; left: 72px; bottom: 64px; background: rgba(10,12,14,.72); color: #fff; font-size: 38px; font-weight: 600;
+    padding: 16px 30px 17px 58px; letter-spacing: -0.01em; opacity: 0; white-space: nowrap; border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    box-shadow: 0 20px 50px rgba(0,0,0,.5); }
+  #cap::before { content: ""; position: absolute; left: 27px; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 95% at 50% 50%, transparent 55%, rgba(0,0,0,.55)); }
+  #fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg"><div class="grid"></div><div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div></div>
+  <div id="cam">
+    <div class="win" id="win">
+      <div class="chrome">
+        <div class="tl"><i></i><i></i><i></i></div>
+        <div class="tabs"><div class="tab"><img id="favicon" alt=""><span id="tabTitle"></span></div></div>
+        <div class="addr"><div class="nav">‹ › ↻</div><div class="omni" id="omni"></div></div>
+      </div>
+      <div class="page" id="page"></div>
+    </div>
+    <div class="hl" id="hl"></div>
+    <svg id="cursor" viewBox="0 0 34 50"><path d="M3 2 L3 40 L12 31 L19 47 L25 44 L18 29 L31 29 Z" fill="#111" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg>
+    <div id="ripple"></div>
+  </div>
+  <div id="vignette"></div>
+  <div id="card"></div>
+  <div id="cap"></div>
+  <div id="fade"></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = (x) => ((x = clamp(x)), x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/** Keyframes [[t, value], ...], eased between; values are numbers or arrays of numbers. */
+function kf(t, frames, fallback) {
+  if (!frames || !frames.length) return fallback;
+  if (t <= frames[0][0]) return frames[0][1];
+  for (let i = 1; i < frames.length; i++) {
+    const [t1, v1] = frames[i], [t0, v0] = frames[i - 1];
+    if (t <= t1) {
+      const x = ease((t - t0) / (t1 - t0 || 1));
+      return typeof v0 === "number" ? lerp(v0, v1, x) : v0.map((a, k) => lerp(a, v1[k], x));
+    }
+  }
+  return frames[frames.length - 1][1];
+}
+
+// World geometry: the window's page area starts at (170, 178); page-image coordinates are offset from there.
+const PAGE_X = 170, PAGE_Y = 178;
+const CONFIG = window.FILM_CONFIG;
+const FADE = 0.35;
+let T = 0;
+const scenes = CONFIG.scenes.map((s) => { const o = { ...s, start: T }; T += s.dur; return o; });
+window.FILM = { duration: T, scenes: scenes.map((s) => ({ start: s.start, dur: s.dur, kind: s.kind })) };
+
+$("favicon").src = CONFIG.icon;
+document.documentElement.style.setProperty("--accent", CONFIG.accent || "#4ade80");
+// Page images, one <img> each, shown by opacity.
+const images = new Map();
+for (const s of scenes) for (const [, src] of s.imgs || []) if (!images.has(src)) {
+  const img = document.createElement("img"); img.src = src; img.style.opacity = 0; $("page").appendChild(img); images.set(src, img);
+}
+
+/** The address bar: the text of `from`, turning into `to` (delete what differs at the front, then type). */
+function omni(o, lt) {
+  if (!o) return "";
+  const { from, to, at, dur } = o;
+  let k = 0; while (k < Math.min(from.length, to.length) && from[from.length - 1 - k] === to[to.length - 1 - k]) k++;
+  const suffix = from.slice(from.length - k), aPre = from.slice(0, from.length - k), bPre = to.slice(0, to.length - k);
+  const x = clamp((lt - at) / dur);
+  const caret = lt >= at - 0.3 && lt <= at + dur + 0.4 && Math.floor(lt * 3) % 2 === 0 ? '<span class="caret"></span>' : "";
+  if (lt < at) return `<span class="rest">${esc(from)}</span>`;
+  const del = aPre.length / Math.max(1, aPre.length + bPre.length);
+  if (x < del) {
+    const kept = aPre.slice(0, Math.round(aPre.length * (1 - x / del)));
+    return `<span class="pre">${esc(kept)}</span>${caret}<span class="rest">${esc(suffix)}</span>`;
+  }
+  const typed = bPre.slice(0, Math.round(bPre.length * ((x - del) / (1 - del || 1))));
+  return `<span class="pre">${esc(typed)}</span>${caret}<span class="rest">${esc(suffix)}</span>`;
+}
+
+function card(c) {
+  return `<div><div class="logo"><img src="${c.icon || CONFIG.icon}" alt=""><span class="word">${esc(c.name || CONFIG.name)}</span></div>
+${c.title ? `<div class="t">${c.title.map(esc).join("<br>")}</div>` : ""}${c.sub ? `<div class="sub">${esc(c.sub)}</div>` : ""}${c.pill ? `<div class="pill">${c.pill}</div>` : ""}</div>`;
+}
+
+window.seek = function (t) {
+  const s = scenes.find((x) => t < x.start + x.dur) || scenes[scenes.length - 1];
+  const lt = t - s.start;
+  // Background drifts slowly.
+  $("bg").style.transform = `translate(${Math.sin(t * 0.25) * 60}px, ${Math.cos(t * 0.2) * 40}px)`;
+  // Fade through black at scene edges marked fade.
+  const fin = s.fadeIn ? 1 - clamp(lt / FADE) : 0, fout = s.fadeOut ? clamp((lt - (s.dur - FADE)) / FADE) : 0;
+  $("fade").style.opacity = Math.max(fin, fout);
+
+  if (s.kind === "card") {
+    $("card").style.opacity = 1;
+    $("card").innerHTML = card(s);
+    $("card").firstElementChild.style.transform = `scale(${lerp(0.94, 1, ease(lt / 0.9))})`;
+    $("card").firstElementChild.style.opacity = ease(lt / 0.6);
+  } else {
+    $("card").style.opacity = 0;
+    const [cx, cy, sc] = kf(lt, s.cam, [960, 540, 1]);
+    $("cam").style.transform = `translate(${960 - cx * sc}px, ${540 - cy * sc}px) scale(${sc})`;
+    $("tabTitle").textContent = s.tab || CONFIG.name;
+    $("omni").innerHTML = s.omni ? omni(s.omni, lt) : `<span class="rest">${esc(s.url || "")}</span>`;
+    const scroll = kf(lt, s.scroll, 0);
+    // The current page image: the last one whose time has come, cross-faded over 0.25 s.
+    const list = s.imgs || [];
+    for (const img of images.values()) img.style.opacity = 0;
+    list.forEach(([at, src], i) => {
+      const img = images.get(src); if (lt < at) return;
+      const next = list[i + 1];
+      const o = clamp((lt - at) / 0.25) * (next && lt >= next[0] ? 1 - clamp((lt - next[0]) / 0.25) : 1);
+      img.style.opacity = i === 0 ? (next && lt >= next[0] ? 1 - clamp((lt - next[0]) / 0.25) : 1) : o;
+      img.style.transform = `translateY(${-scroll}px)`;
+    });
+    // Highlight box, in page-image coordinates.
+    const hl = (s.hl || []).find(([a, b]) => lt >= a - 0.3 && lt <= b + 0.3);
+    if (hl) {
+      const [a, b, [x, y, w, h]] = hl;
+      Object.assign($("hl").style, { left: `${PAGE_X + x}px`, top: `${PAGE_Y + y - scroll}px`, width: `${w}px`, height: `${h}px`,
+        opacity: Math.min(clamp((lt - a) / 0.3), clamp((b + 0.3 - lt) / 0.3)) });
+    } else $("hl").style.opacity = 0;
+    // Cursor and click ripple.
+    if (s.cursor) {
+      const [x, y] = kf(lt, s.cursor, [0, 0]);
+      Object.assign($("cursor").style, { left: `${PAGE_X + x}px`, top: `${PAGE_Y + y - scroll}px`, opacity: clamp((lt - s.cursor[0][0] + 0.2) / 0.3) });
+      const click = (s.clicks || []).find((c) => lt >= c && lt < c + 0.6);
+      if (click !== undefined) {
+        const p = (lt - click) / 0.6;
+        Object.assign($("ripple").style, { left: `${PAGE_X + x + 4}px`, top: `${PAGE_Y + y - scroll + 4}px`, opacity: 1 - p, transform: `scale(${0.4 + p})` });
+      } else $("ripple").style.opacity = 0;
+    } else { $("cursor").style.opacity = 0; $("ripple").style.opacity = 0; }
+  }
+  // Caption pill.
+  const cap = (s.cap || []).find(([a, b]) => lt >= a && lt <= b);
+  if (cap) {
+    const [a, b, text] = cap;
+    $("cap").textContent = text;
+    $("cap").style.opacity = Math.min(clamp((lt - a) / 0.3), clamp((b - lt) / 0.3));
+    $("cap").style.transform = `translateY(${(1 - ease((lt - a) / 0.4)) * 16}px)`;
+  } else $("cap").style.opacity = 0;
+};
+
+const q = new URLSearchParams(location.search);
+if (q.has("play")) { const t0 = performance.now(); (function f() { seek(((performance.now() - t0) / 1000) % T); requestAnimationFrame(f); })(); }
+else seek(Number(q.get("t") ?? 0));
+</script>
+</body>
+</html>

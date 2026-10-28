@@ -122,4 +122,4 @@ flisk resource my-tools --type mcp --stack agents
 
 See [flisk](https://github.com/flisk-sh/flisk) and the website [llms.txt](https://flisk.sh/llms.txt) for the full contract.
 
-The clip on the landing page and above is drawn by `services/agents/agent/scripts/video.ts` (`bun run video`, needs ffmpeg).
+The film on the landing page and above is made by [`video/`](video/): `bun video/shots.ts` takes screenshots of the live site, `bun video/render.ts` films them in headless Chrome (needs Chrome and ffmpeg). Scenes are in `video/film.json`.

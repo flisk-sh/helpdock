@@ -7,3 +7,6 @@ node_modules/
 .flisk/.flisk-out/
 .flisk/.project-id
 .flisk/smoke/
+video/out/
+video/film.run.html
+video/.chrome-profile/

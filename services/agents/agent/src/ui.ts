@@ -228,7 +228,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
     <figure class="demo"><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline preload="metadata" aria-describedby="demo-text"></video>
-    <figcaption id="demo-text" class="sr">A 13-second clip: github.com is replaced with helpdock.flisk.sh in a repository address, its docs open as a help center, a question is answered with a quote from the exact page and its link, and the same docs are added to an AI assistant over MCP.</figcaption></figure>
+    <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
   </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
