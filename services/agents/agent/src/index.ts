@@ -11,7 +11,8 @@ import { seedPages } from './seed-docs.generated';
 import type { Checkpoint, DocStore, SessionStore } from './store';
 import { createPostgresStores } from './store-postgres';
 import { createSqliteStores } from './store-sqlite';
-import { centerPage, EXAMPLE_REPOS, landingPage } from './ui';
+import { ASSET_FILES, llmsTxt, robotsTxt, securityTxt, sitemapXml, webManifest } from './seo';
+import { centerPage, centerPageFor, EXAMPLE_REPOS, landingPage } from './ui';
 
 // Contract with Flisk (see docs/agents/ai-agents.md):
 //   AGENT_DURABILITY  postgres
@@ -211,6 +212,40 @@ async function renderedPage(ws: Workspace, source: string) {
   renderedPages.set(key, { docs: ws.docs, count, page });
   if (renderedPages.size > 300) renderedPages.delete(renderedPages.keys().next().value as string);
   return page;
+}
+
+/** A repository's help center, with its own title, description and canonical address for search and link previews. */
+function repoPage(ref: RepoRef): string {
+  const name = `${ref.owner}/${ref.repo}`;
+  const path = ref.scope ? `${name}/tree/${encodeURIComponent(ref.branch ?? 'main')}/${ref.scope}/` : `${name}/`;
+  return centerPageFor({
+    path,
+    title: `${repoLabel(ref)} docs`,
+    description: `Search, browse and ask the ${name} docs from GitHub, with answers quoted from the exact page. Also an MCP server for your AI.`.slice(0, 160),
+  });
+}
+
+// The day this server started, for sitemap.xml's lastmod.
+const STARTED_ON = new Date().toISOString().slice(0, 10);
+
+/** robots.txt, sitemap.xml, llms.txt, the manifest, security.txt and the icons; false when the path is none of them. */
+function serveSiteFile(req: IncomingMessage, res: ServerResponse, pathname: string): boolean {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const base = siteUrl(req).replace(/\/$/, '');
+  const asset = ASSET_FILES.get(pathname);
+  const text: Record<string, [string, () => string]> = {
+    '/robots.txt': ['text/plain; charset=utf-8', () => robotsTxt(base)],
+    '/sitemap.xml': ['application/xml; charset=utf-8', () => sitemapXml(base, ['', ...(REPOS ? EXAMPLE_REPOS.map((r) => `${r}/`) : [])], STARTED_ON)],
+    '/llms.txt': ['text/plain; charset=utf-8', () => llmsTxt(base, REPOS ? EXAMPLE_REPOS : [])],
+    '/site.webmanifest': ['application/manifest+json', () => webManifest()],
+    '/.well-known/security.txt': ['text/plain; charset=utf-8', () => securityTxt(base)],
+  };
+  if (!asset && !(pathname in text)) return false;
+  res.statusCode = 200;
+  res.setHeader('content-type', asset ? asset.type : text[pathname][0]);
+  res.setHeader('cache-control', asset ? 'public, max-age=604800' : 'public, max-age=3600');
+  res.end(req.method === 'HEAD' ? undefined : asset ? asset.body : text[pathname][1]());
+  return true;
 }
 
 function sendPage(req: IncomingMessage, res: ServerResponse, html: string, headers: Record<string, string>) {
@@ -425,13 +460,13 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
     entry = repos.get(ref, () => buildLimit.hit(ip) === 0);
   } catch (err) {
     if (!(err instanceof BusyError)) throw err;
-    if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, centerPage, centerHeaders);
+    if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, repoPage(ref), centerHeaders);
     res.setHeader('retry-after', '5');
     const message = err.message === 'limit' ? 'You have opened many new repositories this hour; try again later.' : 'Busy reading other repositories; try again in a few seconds.';
     return sendJson(res, 503, { status: 'busy', error: message });
   }
   // The page renders at once and follows the build through /status.
-  if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, centerPage, centerHeaders);
+  if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, repoPage(ref), centerHeaders);
   if (sub === 'status') return sendJson(res, 200, repoStatus(entry, siteUrl(req)));
   // The page asks for this when the visitor starts typing a question: the index is built meanwhile, not after Ask.
   if (sub === 'warm' && req.method === 'POST') {
@@ -469,6 +504,7 @@ const server = createServer(async (req, res) => {
       const ok = !draining && (await store.ready());
       return sendJson(res, ok ? 200 : 503, { ready: ok, durability: DURABILITY });
     }
+    if (serveSiteFile(req, res, url.pathname)) return;
     if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
       return REPOS ? sendPage(req, res, landingPage, landingHeaders) : sendPage(req, res, centerPage, centerHeaders);
     }

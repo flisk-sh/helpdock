@@ -2,8 +2,12 @@
 // only the page's own hashed script):
 //   landingPage  / when HELPDOCK_REPOS=1: "replace github.com with helpdock.flisk.sh", with examples
 //   centerPage   a help center: /owner/repo/ for a GitHub repository, or / (or /docs/) for this deployment's own docs
-// Both read everything they show from the API next to them (./status, ./pages, ./page, ./turn), so the HTML is the
-// same for every repository and its script hash never changes.
+// Both read everything they show from the API next to them (./status, ./pages, ./page, ./turn). Only the <head>
+// differs per repository (title, description, canonical address, social card); the script and its hash never change.
+import { head, type PageMeta, SITE } from './seo';
+
+/** The address canonical links and the social card use: HELPDOCK_PUBLIC_URL, else the production site. */
+const SITE_BASE = (process.env.HELPDOCK_PUBLIC_URL || SITE.url).replace(/\/$/, '');
 
 /** The repositories the landing page offers, built at start (HELPDOCK_PREWARM) so they open at once. */
 export interface Example {
@@ -195,10 +199,7 @@ export const landingPage = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Helpdock: any GitHub repo's docs as a help center and MCP server</title>
-<meta name="description" content="Replace github.com with helpdock.flisk.sh: search and browse any public repository's docs, get cited answers, and plug them into your own AI over MCP. No signup, no API key.">
-<meta property="og:title" content="Helpdock">
-<meta property="og:description" content="Any GitHub repo's docs, as a help center and an MCP server. Replace github.com with helpdock.flisk.sh.">
+${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, description: SITE.description })}
 <style>${css}${landingCss}</style>
 </head>
 <body>
@@ -655,13 +656,13 @@ $('pagesbtn').onclick = function () { $('side').classList.toggle('open'); };
 boot();
 `;
 
-export const centerPage = `<!doctype html>
+/** A help center page with its own title, description and canonical address; the script is the same on every one. */
+export const centerPageFor = (meta: PageMeta) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Helpdock</title>
-<meta name="description" content="Search, browse and ask this repository's docs, with answers quoted from the exact page. Also an MCP server for your AI.">
+${head(SITE_BASE, meta)}
 <style>${css}${centerCss}</style>
 </head>
 <body>
@@ -696,3 +697,9 @@ export const centerPage = `<!doctype html>
 <script>${typewriterJs}${centerJs}</script>
 </body>
 </html>`;
+
+export const centerPage = centerPageFor({
+  path: 'docs/',
+  title: 'Docs',
+  description: "Search, browse and ask this deployment's docs, with answers quoted from the exact page. Also an MCP server for your AI.",
+});

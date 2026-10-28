@@ -1,0 +1,51 @@
+import { describe, expect, it } from 'vitest';
+import { scriptHash } from '../src/guard';
+import { ASSET_FILES, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
+import { centerPage, centerPageFor, landingPage } from '../src/ui';
+
+const attr = (html: string, re: RegExp) => html.match(re)?.[1];
+
+describe('the head of each page', () => {
+  const repo = centerPageFor({ path: 'vercel/next.js/', title: 'vercel/next.js docs', description: 'Search the vercel/next.js docs.' });
+
+  it.each([
+    ['landing', landingPage, 'https://helpdock.flisk.sh/'],
+    ['repository', repo, 'https://helpdock.flisk.sh/vercel/next.js/'],
+  ])('%s: one title, a canonical link, a social card and icons', (_, html, canonical) => {
+    expect(html.match(/<title>/g)).toHaveLength(1);
+    expect(attr(html, /<link rel="canonical" href="([^"]+)"/)).toBe(canonical);
+    expect(attr(html, /<meta property="og:image" content="([^"]+)"/)).toBe('https://helpdock.flisk.sh/og.png');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
+    expect(html).toContain('<link rel="icon" href="/favicon.ico"');
+    const ld = JSON.parse(attr(html, /<script type="application\/ld\+json">(.+?)<\/script>/s) as string);
+    expect(ld['@graph'].map((n: { '@type': string }) => n['@type'])).toEqual(
+      expect.arrayContaining(['WebSite', 'Organization', 'WebApplication']),
+    );
+  });
+
+  it('keeps the same script, so one CSP hash fits every repository', () => {
+    expect(scriptHash(repo)).toBe(scriptHash(centerPage));
+  });
+
+  it('keeps the description at a length search results show whole', () => {
+    expect(SITE.description.length).toBeLessThanOrEqual(160);
+    expect(head('https://x.test', { path: '', title: 't', description: 'd' })).toContain('href="https://x.test/"');
+  });
+});
+
+describe('files for crawlers', () => {
+  it('robots.txt names the AI answer crawlers and points at the sitemap', () => {
+    const robots = robotsTxt('https://helpdock.test');
+    expect(robots).toContain('User-agent: Claude-SearchBot');
+    expect(robots).toContain('Sitemap: https://helpdock.test/sitemap.xml');
+    expect(sitemapXml('https://helpdock.test', ['', 'a/b/'], '2026-10-28')).toContain(
+      '<loc>https://helpdock.test/a/b/</loc><lastmod>2026-10-28</lastmod>',
+    );
+  });
+
+  it('ships every icon at its size', () => {
+    for (const name of Object.values(ICONS)) expect(ASSET_FILES.get(`/${name}`)).toBeDefined();
+    const og = ASSET_FILES.get('/og.png')?.body as Buffer;
+    expect([og.readUInt32BE(16), og.readUInt32BE(20)]).toEqual([1200, 630]);
+  });
+});
