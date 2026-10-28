@@ -111,7 +111,7 @@ const QUEUE_MEMORY_FACTOR = 1.3;
 const INDEX_BATCH = 50;
 
 export function repoKey(ref: RepoRef): string {
-  return `${ref.owner}/${ref.repo}`.toLowerCase();
+  return `${ref.owner}/${ref.repo}${ref.scope ? `/${ref.scope}` : ''}`.toLowerCase();
 }
 
 // Chat sessions of every repository share one small in-memory store, keyed by repository and session id.

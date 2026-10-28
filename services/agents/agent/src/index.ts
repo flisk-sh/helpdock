@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { join } from 'node:path';
 import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { renderMarkdown } from '@flisk-sh/md2html';
-import { docPriority, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef } from './github';
+import { docPriority, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef, repoBase } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
 import { handleMcp } from './mcp';
 import { BusyError, IndexNotReady, leadOf, RepoCache, type RepoEntry, repoLink } from './repos';
@@ -177,11 +177,16 @@ function canWriteDocs(req: IncomingMessage): boolean {
 // The page list with priorities and summaries, built once per index and kept until the index changes (a summary per
 // page is real work: 470 of them took 2.7 s per request on a 0.1 CPU instance). Keyed by the store, checked by count.
 const pageLists = new WeakMap<DocStore, { count: number; pages: unknown[] }>();
-async function pageList(docs: DocStore) {
+async function pageList(docs: DocStore, scope?: string) {
   const count = await docs.count();
   const cached = pageLists.get(docs);
   if (cached && cached.count === count) return cached.pages;
-  const pages = (await docs.pages()).map(({ lead, ...p }) => ({ ...p, priority: docPriority(p.source), summary: summarize(lead ?? '') }));
+  const pages = (await docs.pages()).map(({ lead, ...p }) => {
+    // Inside a folder of a repository, pages are shown and ranked by their path from that folder.
+    const rel = scope && p.source.startsWith(`${scope}/`) ? p.source.slice(scope.length + 1) : p.source;
+    // Inside a folder everything is documentation, whether or not its path says so.
+    return { ...p, rel, priority: docPriority(scope ? `docs/${rel}` : rel), summary: summarize(lead ?? '') };
+  });
   pageLists.set(docs, { count, pages });
   return pages;
 }
@@ -221,15 +226,22 @@ function validSession(req: IncomingMessage): string | null {
   return /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
 }
 
+/** "owner/repo", or "owner/repo › terraform/v1.17.x" for a folder of it (the last two segments of the scope). */
+function repoLabel(ref: RepoRef): string {
+  const tail = ref.scope ? ref.scope.replace(/\/docs$/, '').split('/').slice(-2).join('/') : '';
+  return `${ref.owner}/${ref.repo}${tail ? ` › ${tail}` : ''}`;
+}
+
 function repoStatus(entry: RepoEntry, site: string) {
-  const { owner, repo } = entry.ref;
+  const { owner, repo, scope } = entry.ref;
   return {
     kind: 'repo',
-    label: `${owner}/${repo}`,
+    label: repoLabel(entry.ref),
+    scope: scope ?? '',
     status: entry.status === 'ready' && !entry.stores ? 'error' : entry.status,
     error: entry.error,
     notFound: entry.notFound,
-    github: `https://github.com/${owner}/${repo}`,
+    github: `https://github.com/${owner}/${repo}${scope ? `/tree/HEAD/${scope}` : ''}`,
     sha: entry.sha,
     files: entry.files,
     sections: entry.sections,
@@ -238,7 +250,7 @@ function repoStatus(entry: RepoEntry, site: string) {
     indexing: entry.indexing,
     queued: entry.queued,
     progress: entry.progress,
-    mcpUrl: `${site}${owner}/${repo}/mcp`,
+    mcpUrl: `${site}${repoBase(entry.ref).slice(1)}mcp`,
   };
 }
 
@@ -248,11 +260,10 @@ async function repoWorkspace(entry: RepoEntry, waitMs: number): Promise<Workspac
     await Promise.race([entry.ready, new Promise((r) => setTimeout(r, waitMs))]);
   }
   if (!entry.stores) return null;
-  const { owner, repo } = entry.ref;
   return {
     ...entry.stores,
-    label: `${owner}/${repo}`,
-    base: `/${owner}/${repo}/`,
+    label: repoLabel(entry.ref),
+    base: repoBase(entry.ref),
     writable: false,
     link: repoLink(entry),
     repo: entry,
@@ -274,12 +285,13 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
     if (wait) return tooMany(res, wait);
     const page = await renderedPage(ws, url.searchParams.get('source') ?? '');
     res.setHeader('cache-control', 'public, max-age=3600');
-    return sendJson(res, 200, { lead: page ? leadOf(page as { sections: Array<{ body: string }> }) : '' });
+    const found = page as { title?: string; sections: Array<{ body: string }> } | null;
+    return sendJson(res, 200, { lead: found ? leadOf(found) : '', title: found?.title ?? '' });
   }
 
   if (sub === 'pages' && req.method === 'GET') {
     res.setHeader('cache-control', 'public, max-age=60');
-    return sendJson(res, 200, { pages: await pageList(ws.docs) });
+    return sendJson(res, 200, { pages: await pageList(ws.docs, ws.repo?.ref.scope) });
   }
 
   if (sub === 'page' && req.method === 'GET') {
@@ -369,11 +381,15 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
 // the search index builds. Kept per repository for ten minutes.
 const readmes = new Map<string, { at: number; body: unknown }>();
 async function readme(ref: RepoRef) {
-  const key = `${ref.owner}/${ref.repo}`.toLowerCase();
+  const key = `${ref.owner}/${ref.repo}/${ref.scope ?? ''}`.toLowerCase();
   const hit = readmes.get(key);
   if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.body;
-  for (const name of ['README.md', 'readme.md', 'Readme.md', 'README.mdx', 'docs/README.md']) {
-    const res = await fetch(`https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/HEAD/${name}`, {
+  // A folder's own front page; the repository's README only for the whole repository.
+  const names = ref.scope
+    ? ['README.md', 'index.md', 'index.mdx', 'README.mdx', 'README.rst', 'index.rst', 'index.txt'].map((n) => `${ref.scope}/${n}`)
+    : ['README.md', 'readme.md', 'Readme.md', 'README.mdx', 'README.rst', 'docs/README.md', 'docs/index.md'];
+  for (const name of names) {
+    const res = await fetch(`https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/HEAD/${name.split('/').map(encodeURIComponent).join('/')}`, {
       headers: { 'user-agent': 'helpdock' },
       signal: AbortSignal.timeout(10_000),
     }).catch(() => null);
@@ -392,7 +408,7 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
   // /owner/repo → /owner/repo/, so the page's relative API paths resolve below the repository.
   if (ref.rest === '' && !url.pathname.endsWith('/')) {
     res.statusCode = 308;
-    res.setHeader('location', `/${ref.owner}/${ref.repo}/${url.search}`);
+    res.setHeader('location', `${ref.scope ? url.pathname : `/${ref.owner}/${ref.repo}`}/${url.search}`);
     return res.end();
   }
   const sub = ref.rest.replace(/^\//, '').replace(/\/$/, '');
@@ -499,7 +515,7 @@ async function prewarm() {
     try {
       const entry = repos.get(ref);
       await entry.ready;
-      if (entry.stores) await pageList(entry.stores.docs); // warm the page list too
+      if (entry.stores) await pageList(entry.stores.docs, entry.ref.scope); // warm the page list too
     } catch {
       // Busy or over memory: the example builds on its first visit instead.
     }

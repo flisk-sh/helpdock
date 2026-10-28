@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
+import { inScope, repoBase, sparsePatterns, parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
 
 describe('parseRepoPath', () => {
   it('reads owner, repo and the rest', () => {
@@ -38,6 +38,9 @@ describe('isDocPath', () => {
     expect(isDocPath('.claude/worktrees/x/docs/a.md')).toBe(false);
     expect(isDocPath('docs/de/docs/index.md')).toBe(false);
     expect(isDocPath('docs/en/docs/index.md')).toBe(true);
+    expect(isDocPath('docs/releases/5.2.txt')).toBe(false);
+    expect(isDocPath('docs/topics/db/models.txt')).toBe(true);
+    expect(isDocPath('docs/intro/index.rst')).toBe(true);
     expect(isDocPath('i18n/pt-br/guide.md')).toBe(false);
     expect(isDocPath('docs/api/index.md')).toBe(true);
   });
@@ -116,5 +119,41 @@ describe('parseLsTree', () => {
       { path: 'docs/a b.md', size: 4096 },
     ]);
     expect(parseLsTree('100644 blob aaa\tdocs/x.md\u0000')).toEqual([{ path: 'docs/x.md', size: 1 }]);
+  });
+});
+
+describe('folders of a repository', () => {
+  const tf = '/hashicorp/web-unified-docs/tree/main/content/terraform/v1.17.x/docs';
+
+  it('reads a GitHub tree URL as a scope', () => {
+    expect(parseRepoPath(`${tf}/`)).toEqual({ owner: 'hashicorp', repo: 'web-unified-docs', rest: '', scope: 'content/terraform/v1.17.x/docs', branch: 'main' });
+    expect(parseRepoPath(`${tf}/mcp`)?.rest).toBe('/mcp');
+    expect(parseRepoPath(`${tf}/mcp`)?.scope).toBe('content/terraform/v1.17.x/docs');
+    expect(parseRepoPath('/o/r/tree/main/docs')).toMatchObject({ scope: 'docs', rest: '' });
+    expect(parseRepoPath('/o/r/tree/main/turn')).toMatchObject({ rest: '/turn' });
+  });
+
+  it('keeps plain repositories and refuses unsafe folders', () => {
+    expect(parseRepoPath('/o/r/')).toEqual({ owner: 'o', repo: 'r', rest: '/' });
+    expect(parseRepoPath('/o/r/blob/main/README.md')?.scope).toBeUndefined();
+    expect(parseRepoPath('/o/r/tree/main/a/../b')).toBeNull();
+    expect(parseRepoPath('/o/r/tree/main/a%2F..%2Fb/x')).toBeNull(); // an encoded slash cannot smuggle a ".." in
+  });
+
+  it('puts the scope in the page address, in what git reads and in what is in range', () => {
+    expect(repoBase({ owner: 'o', repo: 'r' })).toBe('/o/r/');
+    expect(repoBase({ owner: 'o', repo: 'r', scope: 'a/b', branch: 'dev' })).toBe('/o/r/tree/dev/a/b/');
+    expect(sparsePatterns('a/b')).toEqual(['/a/b/']);
+    expect(sparsePatterns()).toContain('/docs/**/*.txt');
+    expect(inScope('a/b/c.md', 'a/b')).toBe(true);
+    expect(inScope('a/bc/c.md', 'a/b')).toBe(false);
+    expect(inScope('x.md')).toBe(true);
+  });
+});
+
+describe('HashiCorp MDX', () => {
+  it('turns callouts into quotes and drops includes, and uses page_title', () => {
+    const src = '---\npage_title: Expressions - Configuration Language\n---\n\n@include \'x.mdx\'\n\n~> **Warning:** Be careful.\n\nText.';
+    expect(normalizeMarkdown('a.mdx', src)).toBe('# Expressions - Configuration Language\n\n\n\n> **Warning:** Be careful.\n\nText.');
   });
 });

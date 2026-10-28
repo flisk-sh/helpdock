@@ -16,11 +16,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
+import { isRstPath, rstToMarkdown } from './rst';
 import { TarStream } from './tar';
 
 export interface RepoRef {
   owner: string;
   repo: string;
+  /** A folder of the repository, without slashes at either end ("content/terraform/v1.17.x/docs"); empty for all of it. */
+  scope?: string;
+  /** The branch named in a GitHub tree URL, kept so the page's own URL can be rebuilt; data is read at HEAD. */
+  branch?: string;
+}
+
+/** Whether `path` is inside the scope folder (everything is, without a scope). */
+export const inScope = (path: string, scope?: string) => !scope || path.startsWith(`${scope}/`);
+
+/** The path of a repository's help center on this site: /owner/repo/, or /owner/repo/tree/<branch>/<scope>/. */
+export function repoBase(ref: RepoRef): string {
+  return `/${ref.owner}/${ref.repo}/${ref.scope ? `tree/${ref.branch || 'main'}/${ref.scope}/` : ''}`;
 }
 
 export interface RepoFile {
@@ -75,6 +88,10 @@ const RESERVED = new Set(['health', 'ready', 'turn', 'search', 'docs', 'session'
  * `/owner/repo[/rest]` → the repository and the rest of the path. Also accepts what people paste after replacing
  * github.com: `/owner/repo/tree/main/docs` or `/owner/repo.git`. Null for anything else.
  */
+// The routes below a help center; a scope folder named like one of them is read as the route (not "docs": that is a
+// route of the deployment's own docs only, and many repositories have a docs folder).
+const ROUTES = new Set(['status', 'pages', 'page', 'lead', 'search', 'turn', 'session', 'mcp', 'readme', 'warm']);
+
 export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | null {
   const m = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);
   if (!m) return null;
@@ -84,20 +101,44 @@ export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | 
     return null;
   }
   let rest = m[3] ?? '';
-  // GitHub's own paths below a repository (tree/blob/wiki/...) all mean "this repository" here.
+  // A GitHub tree URL (/tree/<branch>/<folder>) scopes the help center to that folder.
+  const tree = /^\/tree\/([^/]+)\/(.+?)\/?$/.exec(rest);
+  if (tree) {
+    let segments: string[];
+    try {
+      segments = tree[2].split('/').map(decodeURIComponent);
+    } catch {
+      return null;
+    }
+    let route = '';
+    if (segments.length > 1 && ROUTES.has(segments[segments.length - 1])) route = `/${segments.pop()}`;
+    else if (segments.length === 1 && ROUTES.has(segments[0])) return { owner, repo, rest: `/${segments[0]}` };
+    if (segments.some((s) => !s || s === '.' || s === '..' || /[\0\\/]/.test(s)) || segments.join('/').length > 200) return null;
+    return { owner, repo, rest: route, scope: segments.join('/'), branch: decodeURIComponent(tree[1]) };
+  }
+  // Other GitHub paths below a repository (blob/wiki/issues/...) all mean "this repository" here.
   if (/^\/(tree|blob|wiki|issues|pulls|discussions|releases)(\/|$)/.test(rest)) rest = '';
   return { owner, repo, rest };
 }
 
 /** Whether a path is documentation worth indexing. */
+/** What git reads for a repository: Markdown, MDX and reStructuredText everywhere, or just the scope folder. */
+export function sparsePatterns(scope?: string): string[] {
+  if (scope) return [`/${scope}/`];
+  return ['*.md', '*.mdx', '*.markdown', '*.rst', '/docs/**/*.txt', '/doc/**/*.txt'];
+}
+
 export function isDocPath(path: string): boolean {
-  if (!/\.(md|mdx|markdown)$/i.test(path)) return false;
+  if (!/\.(md|mdx|markdown|rst)$/i.test(path) && !isRstPath(path)) return false;
   const lower = path.toLowerCase();
   // Hidden folders (.github, .claude, agent worktrees) hold tooling, templates and copies, not documentation.
   if (/(^|\/)\.[^/]+\//.test(lower)) return false;
   if (/(^|\/)(node_modules|vendor|third_party|dist|build|target|fixtures?|__snapshots__|testdata)\//.test(lower)) {
     return false;
   }
+  // A folder of release notes (Django: docs/releases, over 300 files) answers questions about the past, and would fill
+  // the page limit before the how-to pages.
+  if (/(^|\/)(releases?|release-notes|changelogs?)\//.test(lower)) return false;
   // Translations: docs/de/..., i18n/ja/... are skipped; English is what the index and its stop words are for.
   if (/(^|\/)(docs|i18n|translations|locales?|content|lang)\/(?!en(-[a-z]+)?\/)[a-z]{2}(-[a-z]{2,4})?\//.test(lower)) return false;
   const base = lower.split('/').pop() ?? '';
@@ -122,6 +163,8 @@ export function docPriority(path: string): number {
   if (/(^|\/)(agents?|prompts?|skills?|\.?claude|copilot)\//.test(lower)) score -= 4;
   // How to contribute to the project is for its maintainers, not for people using it.
   if (/(^|\/)contributing\//.test(lower)) score -= 4;
+  // Release notes and a project's own internals (Django: docs/releases, docs/internals) are not how-to either.
+  if (/(^|\/)(releases?|release-notes|internals)\//.test(lower)) score -= 4;
   // Marketing copy, outreach, launch notes, blog posts and design records talk about the product; they are not how-to.
   if (/(^|\/)(marketing|outreach|launch|blog|posts|articles|press|rfcs?|adr|decisions|openspec)\//.test(lower)) score -= 3;
   // Example and test folders inside the docs (docs/examples/) are documentation; elsewhere they are code samples.
@@ -134,11 +177,14 @@ export function docPriority(path: string): number {
  * page has none), MDX import/export lines and JSX tags removed, their text kept.
  */
 export function normalizeMarkdown(path: string, text: string): string {
+  // reStructuredText (Django's docs/*.txt, Sphinx's .rst) becomes Markdown first; the rest of this is for Markdown.
+  if (isRstPath(path)) return rstToMarkdown(text);
   let body = text.replace(/\r\n/g, '\n');
   let title: string | null = null;
   const fm = /^---\n([\s\S]*?)\n---\n/.exec(body);
   if (fm) {
-    title = /^title:\s*["']?(.+?)["']?\s*$/m.exec(fm[1])?.[1] ?? null;
+    // `title:` (most sites) or `page_title:` (HashiCorp's docs)
+    title = /^(?:page_)?title:\s*["']?(.+?)["']?\s*$/m.exec(fm[1])?.[1] ?? null;
     body = body.slice(fm[0].length);
   }
   if (/\.mdx$/i.test(path)) {
@@ -147,6 +193,13 @@ export function normalizeMarkdown(path: string, text: string): string {
     for (const line of body.split('\n')) {
       if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
       if (!inFence && /^(import|export)\s/.test(line)) continue;
+      // HashiCorp's includes ("@include 'file.mdx'") pull in text we do not have.
+      if (!inFence && /^@include\s/.test(line)) continue;
+      // and its callouts: "-> note", "~> warning", "!> danger", "=> tip" at the start of a paragraph
+      if (!inFence && /^(->|~>|!>|=>)\s/.test(line)) {
+        out.push(`> ${line.slice(3).trim()}`);
+        continue;
+      }
       out.push(inFence ? line : line.replace(/<\/?[A-Z][\w.]*(\s[^<>]*)?\/?>/g, ''));
     }
     // MDX comments, {/* ... */}, can span lines.
@@ -299,7 +352,7 @@ export async function readRepoMarkdown(
     tar = new TarStream({
       want: (path, size) => {
         const inRepo = path.slice(path.indexOf('/') + 1); // drop the "<owner>-<repo>-<sha>/" folder
-        return isDocPath(inRepo) && size > 0 && size <= limits.maxFileBytes && files.length < limits.maxFiles * CANDIDATE_FACTOR;
+        return inScope(inRepo, ref.scope) && isDocPath(inRepo) && size > 0 && size <= limits.maxFileBytes && files.length < limits.maxFiles * CANDIDATE_FACTOR;
       },
       onFile: (f) => {
         if (files.length >= limits.maxFiles * CANDIDATE_FACTOR || totalBytes + f.data.length > limits.maxTotalBytes * CANDIDATE_FACTOR) {
@@ -476,7 +529,7 @@ export async function readRepoViaApi(
     // A tree too big for one response comes back truncated; the other ways read all of it.
     if (tree.truncated) throw new RateLimited('tree listing truncated');
     const { chosen, candidates } = chooseDocs(
-      tree.tree.filter((e) => e.type === 'blob').map((e) => ({ path: e.path, size: e.size ?? 0 })),
+      tree.tree.filter((e) => e.type === 'blob' && inScope(e.path, ref.scope)).map((e) => ({ path: e.path, size: e.size ?? 0 })),
       limits,
     );
     const { files, bytes } = await fetchDocs(
@@ -524,13 +577,13 @@ export async function readRepoViaGit(
     }
     const repo = join(dir, 'repo');
     const gitIn = (...args: string[]) => git('-C', repo, ...args);
-    await gitIn('sparse-checkout', 'set', '--no-cone', '*.md', '*.mdx', '*.markdown');
+    await gitIn('sparse-checkout', 'set', '--no-cone', ...sparsePatterns(ref.scope));
     await gitIn('checkout', '--quiet');
     const sha = (await gitIn('rev-parse', 'HEAD')).trim();
     const paths = (await gitIn('ls-files', '-z')).split('\0').filter(Boolean);
     const sized: Array<{ path: string; size: number }> = [];
     for (const path of paths) {
-      if (!isDocPath(path)) continue;
+      if (!isDocPath(path) || !inScope(path, ref.scope)) continue;
       try {
         const st = await stat(join(repo, path));
         if (st.isFile()) sized.push({ path, size: st.size });
@@ -603,7 +656,9 @@ export async function listRepoDocs(ref: RepoRef, limits: ReadLimits = DEFAULT_LI
     }
     const repo = join(dir, 'repo');
     const sha = (await git('-C', repo, 'rev-parse', 'HEAD')).trim();
-    const files = parseLsTree(await git('-C', repo, 'ls-tree', '-r', '-z', 'HEAD'));
+    // With a scope, the tree is that folder's (HEAD:folder), and its paths are put back under it.
+    const listed = parseLsTree(await git('-C', repo, 'ls-tree', '-r', '-z', ref.scope ? `HEAD:${ref.scope}` : 'HEAD'));
+    const files = ref.scope ? listed.map((f) => ({ ...f, path: `${ref.scope}/${f.path}` })) : listed;
     const { chosen, candidates } = chooseDocs(files.filter((f) => isDocPath(f.path)), limits);
     const sizes = new Map(files.map((f) => [f.path, f.size]));
     return { sha, paths: chosen.map((path) => ({ path, size: sizes.get(path) ?? 0 })), truncated: candidates > chosen.length };

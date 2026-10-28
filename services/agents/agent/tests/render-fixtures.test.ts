@@ -12,8 +12,10 @@ const dir = join(import.meta.dirname, 'fixtures');
 const base = 'https://github.com/flisk-sh/flisk/blob/main/README.md';
 const ESCAPED_TAG = /&lt;\/?(a|img|p|div|table|tr|td|th|br|picture|source|details|summary|sub|sup|b|kbd)[\s>/]/gi;
 
-describe.each(readdirSync(dir).filter((f) => f.endsWith('.md')))('%s', (file) => {
-  const sections = chunkMarkdown(file, normalizeMarkdown(file, readFileSync(join(dir, file), 'utf8')));
+describe.each(readdirSync(dir).filter((f) => /\.(md|txt|rst|mdx)$/.test(f)))('%s', (file) => {
+  // A fixture's name is its path in the repository, with "__" for "/" (docs__intro__tutorial01.txt).
+  const source = file.replace(/__/g, '/');
+  const sections = chunkMarkdown(source, normalizeMarkdown(source, readFileSync(join(dir, file), 'utf8')));
 
   it('has sections', () => {
     expect(sections.length).toBeGreaterThan(0);

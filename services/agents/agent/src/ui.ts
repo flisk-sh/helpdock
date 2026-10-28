@@ -6,29 +6,32 @@
 // same for every repository and its script hash never changes.
 
 /** The repositories the landing page offers, built at start (HELPDOCK_PREWARM) so they open at once. */
-export const EXAMPLE_REPOS = [
-  'vercel/next.js',
-  'reactjs/react.dev',
-  'tanstack/query',
-  'oven-sh/bun',
-  'shadcn-ui/ui',
-  'ollama/ollama',
-  'n8n-io/n8n-docs',
-  'modelcontextprotocol/modelcontextprotocol',
-  'flisk-sh/flisk',
+export interface Example {
+  /** What follows helpdock.flisk.sh/: owner/repo, or owner/repo/tree/<branch>/<folder> for a folder of it. */
+  path: string;
+  name: string;
+  /** The GitHub account whose avatar is shown. */
+  owner: string;
+  note: string;
+}
+
+export const EXAMPLES: Example[] = [
+  { path: 'vercel/next.js', name: 'vercel/next.js', owner: 'vercel', note: 'The React framework for the web' },
+  { path: 'reactjs/react.dev', name: 'reactjs/react.dev', owner: 'reactjs', note: 'The React docs, from react.dev' },
+  { path: 'django/django', name: 'django/django', owner: 'django', note: 'The web framework for perfectionists' },
+  { path: 'hashicorp/web-unified-docs/tree/main/content/terraform/v1.17.x/docs', name: 'hashicorp/terraform', owner: 'hashicorp', note: 'Infrastructure as code: the Terraform docs' },
+  { path: 'tanstack/query', name: 'tanstack/query', owner: 'tanstack', note: 'Async state and data fetching' },
+  { path: 'oven-sh/bun', name: 'oven-sh/bun', owner: 'oven-sh', note: 'JavaScript runtime, bundler and package manager' },
+  { path: 'fastapi/fastapi', name: 'fastapi/fastapi', owner: 'fastapi', note: 'Modern, fast Python web APIs' },
+  { path: 'shadcn-ui/ui', name: 'shadcn-ui/ui', owner: 'shadcn-ui', note: 'Components you copy into your app' },
+  { path: 'ollama/ollama', name: 'ollama/ollama', owner: 'ollama', note: 'Run open models on your own machine' },
+  { path: 'n8n-io/n8n-docs', name: 'n8n-io/n8n-docs', owner: 'n8n-io', note: 'Workflow automation, the n8n docs' },
+  { path: 'modelcontextprotocol/modelcontextprotocol', name: 'modelcontextprotocol/modelcontextprotocol', owner: 'modelcontextprotocol', note: 'The Model Context Protocol spec' },
+  { path: 'flisk-sh/flisk', name: 'flisk-sh/flisk', owner: 'flisk-sh', note: 'Your whole app running locally, one command' },
 ];
 
-const EXAMPLE_NOTES: Record<string, string> = {
-  'vercel/next.js': 'The React framework for the web',
-  'reactjs/react.dev': 'The React docs, from react.dev',
-  'tanstack/query': 'Async state and data fetching',
-  'oven-sh/bun': 'JavaScript runtime, bundler and package manager',
-  'shadcn-ui/ui': 'Components you copy into your app',
-  'ollama/ollama': 'Run open models on your own machine',
-  'n8n-io/n8n-docs': 'Workflow automation, the n8n docs',
-  'modelcontextprotocol/modelcontextprotocol': 'The Model Context Protocol spec',
-  'flisk-sh/flisk': 'Your whole app running locally, one command',
-};
+/** The paths built at start (HELPDOCK_PREWARM) so the landing page's examples open at once. */
+export const EXAMPLE_REPOS = EXAMPLES.map((e) => e.path);
 
 const css = String.raw`
 :root { --bg:#f6f5f1; --panel:#ffffff; --ink:#17171a; --muted:#66655f; --line:#e3e1da; --accent:#0d7a62; --accent-ink:#ffffff; --tint:#e6f2ee; --code:#f1efe9; --warn:#9a5b00; }
@@ -135,6 +138,9 @@ form.open { max-width:640px; }
 .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; }
 .card h3 { margin:0 0 6px; font-size:17px; letter-spacing:-.01em; }
 .card p { margin:0 0 10px; color:var(--muted); font-size:15px; }
+.codebox { position:relative; }
+.codebox pre { padding-right:74px !important; }
+.codebox .ghost { position:absolute; top:7px; right:7px; padding:3px 11px; font-size:12.5px; }
 .card pre { margin:0; background:var(--code); border-radius:10px; padding:10px 12px; font-size:12.5px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
 .how { margin:44px 0 0; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:18px; }
 .how div { border-top:2px solid var(--line); padding-top:12px; }
@@ -149,7 +155,10 @@ const landingJs = String.raw`
 function repoFromInput(v) {
   v = v.trim().replace(/^https?:\/\//i, '').replace(/^(www\.)?(github\.com|helpdock\.flisk\.sh)\//i, '').replace(/\.git$/i, '');
   var m = /^([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9._-]{1,100})(\/.*)?$/.exec(v);
-  return m ? m[1] + '/' + m[2] : null;
+  if (!m) return null;
+  // A folder link (github.com/o/r/tree/main/docs) opens that folder as its own help center.
+  var folder = /^\/tree\/[^/]+\/[^?#]+/.exec(m[3] || '');
+  return m[1] + '/' + m[2] + (folder ? folder[0].replace(/\/$/, '') : '');
 }
 document.getElementById('open').onsubmit = function (e) {
   e.preventDefault();
@@ -159,6 +168,14 @@ document.getElementById('open').onsubmit = function (e) {
 };
 document.querySelectorAll('[data-host]').forEach(function (el) { el.textContent = location.host; });
 typewriter(document.getElementById('repo'), ['vercel/next.js', 'tanstack/query', 'oven-sh/bun', 'reactjs/react.dev', 'flisk-sh/flisk', 'your-org/your-repo'], 'github.com/');
+// Every [data-copy] button copies the text of the element its selector names.
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.onclick = function () {
+    var text = document.querySelector(b.getAttribute('data-copy')).textContent;
+    navigator.clipboard.writeText(text).then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy failed'; });
+    setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+  };
+});
 document.getElementById('copytry').onclick = function () {
   var b = this; navigator.clipboard.writeText(location.origin + '/vercel/next.js/').then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy failed'; });
   setTimeout(function () { b.textContent = 'Copy'; }, 1500);
@@ -167,9 +184,9 @@ document.querySelectorAll('[data-mcp]').forEach(function (el) { el.textContent =
 `;
 
 function examples(): string {
-  return EXAMPLE_REPOS.map(
-    (r) =>
-      `<a class="ex" href="/${r}/"><img class="exav" src="https://github.com/${r.split('/')[0]}.png?size=72" alt="" width="36" height="36"><div><div class="name mono">${r}</div><div class="note">${EXAMPLE_NOTES[r] ?? ''}</div></div></a>`,
+  return EXAMPLES.map(
+    (e) =>
+      `<a class="ex" href="/${e.path}/"><img class="exav" src="https://github.com/${e.owner}.png?size=72" alt="" width="36" height="36"><div><div class="name mono">${e.name}</div><div class="note">${e.note}</div></div></a>`,
   ).join('');
 }
 
@@ -203,7 +220,7 @@ export const landingPage = `<!doctype html>
   </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
-    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre></div>
+    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><div class="codebox"><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre><button class="ghost" type="button" data-copy="[data-mcp]">Copy</button></div></div>
     <div class="card"><h3>Your AI, not ours</h3><p>Helpdock never calls a model and needs no key. Under each answer, one click hands the question and the cited passages to your ChatGPT or Claude.</p></div>
   </section>
   <section class="how" id="how">
@@ -350,7 +367,8 @@ function boot() {
     $('label').textContent = s.label;
     if (s.github) $('label').href = s.github; else $('label').removeAttribute('href');
     if (s.kind === 'repo') { var av = $('avatar'); av.src = 'https://github.com/' + s.label.split('/')[0] + '.png?size=64'; av.hidden = false; }
-    $('title').textContent = 'Ask the ' + s.label + ' docs';
+    // A folder's heading is the folder ("terraform/v1.17.x"), the header keeps the whole address.
+    $('title').textContent = 'Ask the ' + (s.label.indexOf(' › ') > 0 ? s.label.split(' › ')[1] : s.label) + ' docs';
     if (s.status === 'building') {
       var p = s.progress || { files: 0 };
       setStatus(s.queued ? 'Waiting…' : 'Indexing…');
@@ -372,7 +390,8 @@ function boot() {
     setStatus((s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''));
     if (s.truncated) $('pill').title = 'The largest repositories are indexed up to ' + s.files + ' pages, docs first.';
     $('mcpurl').textContent = s.mcpUrl;
-    var name = (s.label.split('/').pop() || 'docs').replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
+    var folder = s.label.indexOf(' › ') > 0 ? s.label.split(' › ')[1].split('/')[0] : '';
+    var name = (folder || s.label.split('/').pop() || 'docs').replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
     $('mcpcc').textContent = 'claude mcp add --transport http ' + name + ' ' + s.mcpUrl;
     var servers = {}; servers[name] = { url: s.mcpUrl };
     $('mcpjson').textContent = JSON.stringify({ mcpServers: servers }, null, 2);
@@ -403,7 +422,7 @@ function boot() {
 }
 
 function dirOfSource(s) { return s.indexOf('/') === -1 ? '' : s.slice(0, s.lastIndexOf('/')); }
-function baseName(s) { return s.split('/').pop().replace(/\.(md|mdx|markdown)$/i, '').replace(/^\d+[-_.]/, '').toLowerCase(); }
+function baseName(s) { return s.split('/').pop().replace(/\.(md|mdx|markdown|rst|txt)$/i, '').replace(/^\d+[-_.]/, '').toLowerCase(); }
 // "01-app" → "App", "api-reference" → "API reference": folder names as people would write them.
 function prettySegment(seg) {
   var t = seg.replace(/^\d+[-_.]/, '').replace(/[-_]+/g, ' ').trim();
@@ -417,7 +436,7 @@ function buildTree(list) {
   var root = { name: '', path: '', label: '', kids: {}, pages: [], best: -99, count: 0 };
   list.forEach(function (p) {
     var node = root;
-    var dir = dirOfSource(p.source);
+    var dir = dirOfSource(p.rel || p.source);
     (dir ? dir.split('/') : []).forEach(function (seg) {
       if (!node.kids[seg]) node.kids[seg] = { name: seg, path: node.path ? node.path + '/' + seg : seg, label: prettySegment(seg), kids: {}, pages: [], best: -99, count: 0 };
       node = node.kids[seg];
@@ -521,21 +540,29 @@ function renderStart() {
   if (!picks.length) return;
   box.append(el('div', 'label-sm', 'Start here'));
   var grid = el('div', 'cards');
-  picks.forEach(function (p) {
+  var chipOf = {};
+  var phrases = picks.map(function (p) { return p.title; });
+  picks.forEach(function (p, n) {
     var c = el('a', 'pcard'); c.href = '#page=' + encodeURIComponent(p.source);
     c.onclick = function (e) { e.preventDefault(); openPage(p.source); };
     var cs = el('div', 'cs', p.summary || '');
-    c.append(el('div', 'ct', p.title), cs);
+    var ct = el('div', 'ct', p.title);
+    c.append(ct, cs);
     grid.append(c);
-    if (!p.summary) api('lead?source=' + encodeURIComponent(p.source)).then(function (r) { if (r.lead) cs.textContent = r.lead; else c.classList.add('nolead'); }).catch(function () {});
+    // Without an index a page's title is its file name ("Cli"); its real title and lead come from the page itself.
+    if (!p.summary) api('lead?source=' + encodeURIComponent(p.source)).then(function (r) {
+      if (r.title) { ct.textContent = r.title; p.title = r.title; phrases[n] = r.title; if (chipOf[n]) { chipOf[n].textContent = r.title; } }
+      if (r.lead) cs.textContent = r.lead; else c.classList.add('nolead');
+    }).catch(function () {});
   });
   box.append(grid);
   // The question box types this repository's own topics as examples.
-  if (!typing) { typing = true; typewriter($('q'), picks.map(function (p) { return p.title; }), 'Ask about '); }
+  if (!typing) { typing = true; typewriter($('q'), phrases, 'Ask about '); }
   // Suggested questions: the same topics, phrased as one.
   var chips = $('chips'); chips.textContent = '';
-  picks.slice(0, 4).forEach(function (p) {
-    var b = el('button', 'chip', p.title); b.type = 'button'; b.onclick = function () { ask(p.title); };
+  picks.slice(0, 4).forEach(function (p, n) {
+    var b = el('button', 'chip', p.title); b.type = 'button'; b.onclick = function () { ask(b.textContent); };
+    chipOf[n] = b;
     chips.append(b);
   });
 }
@@ -623,6 +650,7 @@ $('filter').oninput = function () { renderSide($('filter').value); };
 $('mcpbtn').onclick = function () { $('mcp').hidden = !$('mcp').hidden; };
 $('copymcp').onclick = function () { copy($('mcpurl').textContent, $('copymcp')); };
 $('copycc').onclick = function () { copy($('mcpcc').textContent, $('copycc')); };
+$('copyjson').onclick = function () { copy($('mcpjson').textContent, $('copyjson')); };
 $('pagesbtn').onclick = function () { $('side').classList.toggle('open'); };
 boot();
 `;
@@ -650,7 +678,7 @@ export const centerPage = `<!doctype html>
       <div class="k">MCP server (Streamable HTTP, no key). Tools: <span class="mono">search_docs</span>, <span class="mono">ask_help_center</span>.</div>
       <pre class="mono" id="mcpurl"></pre><button class="ghost" id="copymcp" type="button">Copy URL</button>
       <div class="k">Claude Code:</div><pre class="mono" id="mcpcc"></pre><button class="ghost" id="copycc" type="button">Copy command</button>
-      <div class="k">Cursor, Windsurf and other clients (mcp.json):</div><pre class="mono" id="mcpjson"></pre>
+      <div class="k">Cursor, Windsurf and other clients (mcp.json):</div><pre class="mono" id="mcpjson"></pre><button class="ghost" id="copyjson" type="button">Copy JSON</button>
     </section>
     <div class="loading" id="loading" hidden><div class="spin"></div><span id="loadmsg">Reading the repository…</span></div>
     <div id="fatal" hidden><h1>Can't open this one</h1><p class="sub" id="fatalmsg"></p><a class="ghost" href="/">Try another repository</a></div>

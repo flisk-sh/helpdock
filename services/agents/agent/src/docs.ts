@@ -48,6 +48,7 @@ export function cleanHeading(heading: string): string {
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/`/g, '')
     .replace(/\s+#+\s*$/, '')
     .replace(/\s*\{\s*[#.][^}]*\}\s*$/, '') // MkDocs attribute lists: "## Install {#install}", "{ #install }"
     .trim();
@@ -55,7 +56,7 @@ export function cleanHeading(heading: string): string {
 
 /** A page title from its path when the page has no # heading: docs/getting-started/index.md → "Getting started". */
 export function titleFromPath(source: string): string {
-  const parts = source.replace(/\.(md|mdx|markdown)$/i, '').split('/');
+  const parts = source.replace(/\.(md|mdx|markdown|rst|txt)$/i, '').split('/');
   let name = parts.pop() ?? source;
   if (/^(index|readme)$/i.test(name) && parts.length > 0) name = parts.pop() as string;
   // Doc sites order their files with number prefixes (01-installation.mdx): the reader does not need them.
@@ -322,7 +323,7 @@ function sameWord(a: string, b: string): boolean {
 
 /** The words a page's file is named by: docs/01-app/environment-variables.mdx → environment, variables. */
 export function fileWords(source: string): string[] {
-  const parts = source.toLowerCase().replace(/\.(md|mdx|markdown)$/, '').split('/');
+  const parts = source.toLowerCase().replace(/\.(md|mdx|markdown|rst|txt)$/, '').split('/');
   let name = parts.pop() ?? '';
   if (/^(index|readme)$/.test(name) && parts.length > 0) name = parts.pop() as string;
   return name
