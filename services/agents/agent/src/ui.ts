@@ -236,6 +236,8 @@ main.main { padding:28px 0 60px; min-width:0; }
 .main h1 { font-size:clamp(26px, 3.6vw, 36px); letter-spacing:-.025em; line-height:1.15; margin:0 0 6px; overflow-wrap:anywhere; }
 .main .sub { color:var(--muted); margin:0 0 18px; }
 .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; }
+#ask.compact h1, #ask.compact .sub, #ask.compact .chips { display:none; }
+#ask.compact { margin-bottom:18px; }
 .chip { font:inherit; font-size:14px; padding:6px 12px; border-radius:999px; background:var(--tint); color:var(--accent); border:0; cursor:pointer; }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:0 0 18px; }
 .panel h3 { margin:0 0 8px; font-size:15px; }
@@ -598,7 +600,7 @@ function openPage(source, section) {
   }).catch(function (e) { box.textContent = ''; box.append(el('div', 'none', 'Could not open this page: ' + e.message)); });
 }
 
-function showView(which, home) { $('answers').hidden = which !== 'answers'; $('article').hidden = which !== 'article'; $('ask').hidden = which === 'article'; $('start').hidden = !home; }
+function showView(which, home) { $('answers').hidden = which !== 'answers'; $('article').hidden = which !== 'article'; $('ask').hidden = false; $('ask').classList.toggle('compact', which === 'article'); $('start').hidden = !home; }
 
 $('f').onsubmit = function (e) { e.preventDefault(); ask($('q').value); };
 $('filter').oninput = function () { renderSide($('filter').value); };
