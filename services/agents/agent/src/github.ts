@@ -105,16 +105,20 @@ export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | 
   const tree = /^\/tree\/([^/]+)\/(.+?)\/?$/.exec(rest);
   if (tree) {
     let segments: string[];
+    let branch: string;
     try {
       segments = tree[2].split('/').map(decodeURIComponent);
+      branch = decodeURIComponent(tree[1]);
     } catch {
       return null;
     }
     let route = '';
     if (segments.length > 1 && ROUTES.has(segments[segments.length - 1])) route = `/${segments.pop()}`;
     else if (segments.length === 1 && ROUTES.has(segments[0])) return { owner, repo, rest: `/${segments[0]}` };
-    if (segments.some((s) => !s || s === '.' || s === '..' || /[\0\\/]/.test(s)) || segments.join('/').length > 200) return null;
-    return { owner, repo, rest: route, scope: segments.join('/'), branch: decodeURIComponent(tree[1]) };
+    // Control characters too: a newline in the folder would be a second pattern in git's sparse-checkout list.
+    if (segments.some((s) => !s || s === '.' || s === '..' || /[\x00-\x1f\x7f\\/]/.test(s)) || segments.join('/').length > 200) return null;
+    if (/[\x00-\x1f\x7f]/.test(branch)) return null;
+    return { owner, repo, rest: route, scope: segments.join('/'), branch };
   }
   // Other GitHub paths below a repository (blob/wiki/issues/...) all mean "this repository" here.
   if (/^\/(tree|blob|wiki|issues|pulls|discussions|releases)(\/|$)/.test(rest)) rest = '';

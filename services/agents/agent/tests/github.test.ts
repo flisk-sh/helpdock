@@ -142,6 +142,9 @@ describe('folders of a repository', () => {
     expect(parseRepoPath('/o/r/blob/main/README.md')?.scope).toBeUndefined();
     expect(parseRepoPath('/o/r/tree/main/a/../b')).toBeNull();
     expect(parseRepoPath('/o/r/tree/main/a%2F..%2Fb/x')).toBeNull(); // an encoded slash cannot smuggle a ".." in
+    expect(parseRepoPath('/o/r/tree/main/a%0A*/x')).toBeNull(); // nor a newline a second sparse-checkout pattern
+    expect(parseRepoPath('/o/r/tree/ma%0Din/docs')).toBeNull();
+    expect(parseRepoPath('/o/r/tree/%E0%A4%A/docs')).toBeNull(); // a malformed escape is not a server error
   });
 
   it('puts the scope in the page address, in what git reads and in what is in range', () => {
