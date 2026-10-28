@@ -8,20 +8,26 @@
 /** The repositories the landing page offers, built at start (HELPDOCK_PREWARM) so they open at once. */
 export const EXAMPLE_REPOS = [
   'vercel/next.js',
+  'reactjs/react.dev',
+  'tanstack/query',
+  'oven-sh/bun',
   'shadcn-ui/ui',
   'ollama/ollama',
-  'excalidraw/excalidraw',
   'n8n-io/n8n-docs',
   'modelcontextprotocol/modelcontextprotocol',
+  'flisk-sh/flisk',
 ];
 
 const EXAMPLE_NOTES: Record<string, string> = {
   'vercel/next.js': 'The React framework for the web',
+  'reactjs/react.dev': 'The React docs, from react.dev',
+  'tanstack/query': 'Async state and data fetching',
+  'oven-sh/bun': 'JavaScript runtime, bundler and package manager',
   'shadcn-ui/ui': 'Components you copy into your app',
   'ollama/ollama': 'Run open models on your own machine',
-  'excalidraw/excalidraw': 'The virtual whiteboard for sketching diagrams',
   'n8n-io/n8n-docs': 'Workflow automation, the n8n docs',
   'modelcontextprotocol/modelcontextprotocol': 'The Model Context Protocol spec',
+  'flisk-sh/flisk': 'Your whole app running locally, one command',
 };
 
 const css = String.raw`
@@ -152,7 +158,7 @@ document.getElementById('open').onsubmit = function (e) {
   location.href = '/' + repo + '/';
 };
 document.querySelectorAll('[data-host]').forEach(function (el) { el.textContent = location.host; });
-typewriter(document.getElementById('repo'), ['vercel/next.js', 'shadcn-ui/ui', 'ollama/ollama', 'n8n-io/n8n-docs', 'excalidraw/excalidraw', 'your-org/your-repo'], 'github.com/');
+typewriter(document.getElementById('repo'), ['vercel/next.js', 'tanstack/query', 'oven-sh/bun', 'reactjs/react.dev', 'flisk-sh/flisk', 'your-org/your-repo'], 'github.com/');
 document.getElementById('copytry').onclick = function () {
   var b = this; navigator.clipboard.writeText(location.origin + '/vercel/next.js/').then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Copy failed'; });
   setTimeout(function () { b.textContent = 'Copy'; }, 1500);
