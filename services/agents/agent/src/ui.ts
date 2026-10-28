@@ -254,7 +254,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
-    <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline preload="metadata" aria-describedby="demo-text"></video>
+    <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline controls preload="metadata" aria-describedby="demo-text"></video>
     <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
   </section>
 </div></div>
