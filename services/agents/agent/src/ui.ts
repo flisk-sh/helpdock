@@ -187,6 +187,8 @@ section.grid3 { margin-top:72px; }
 .how { counter-reset:h; }
 section.how > div { counter-increment:h; border-top:0; padding-top:0; }
 section.how > div::before { content:counter(h); display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #14b8a6, #3b82f6); color:#fff; font-weight:750; margin-bottom:12px; }
+.stage .hero { padding:48px 0 0; }
+@media (min-width: 980px) { .stage .hero { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr); column-gap:52px; align-items:center; padding:48px 0 56px; } .stage .hero > * { grid-column:1; } .stage .hero .eyebrow { justify-self:start; } .stage .hero h1 { font-size:clamp(40px, 4.4vw, 58px); margin-top:16px; } .stage .hero p.lede { font-size:17px; } .stage .hero .demo { grid-column:2; grid-row:1 / span 5; margin:0; border-radius:16px; border-bottom:1px solid rgba(255,255,255,.12); box-shadow:0 30px 90px -30px rgba(34,211,238,.5); } .stage .hero .examples { grid-column:1 / -1; margin-top:36px; } }
 `;
 
 const landingJs = String.raw`
