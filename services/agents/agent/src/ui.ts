@@ -93,6 +93,14 @@ input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .md blockquote.alert { border-left-color:var(--accent); color:var(--ink); background:var(--tint); border-radius:0 8px 8px 0; padding:8px 12px; }
 .md blockquote.alert-warning, .md blockquote.alert-caution { border-left-color:var(--warn); }
 .md th, .md td { border:1px solid var(--line); padding:5px 9px; text-align:left; vertical-align:top; }
+.stage { position:relative; overflow:hidden; background:#06090a; color:#f2f4f3; --bg:#06090a; --panel:#0f1514; --ink:#f2f4f3; --muted:#a3aead; --line:#223030; --accent:#4fd1ac; --accent-ink:#06100d; --tint:#12302a; --code:#141c1b; }
+.stage::before { content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px); background-size:56px 56px; -webkit-mask-image:radial-gradient(65% 70% at 35% 25%, #000 25%, transparent 100%); mask-image:radial-gradient(65% 70% at 35% 25%, #000 25%, transparent 100%); pointer-events:none; }
+.stage::after { content:""; position:absolute; inset:-10%; background:radial-gradient(36% 30% at 18% 14%, rgba(79,209,172,.32), transparent 70%), radial-gradient(34% 30% at 85% 28%, rgba(56,130,246,.3), transparent 70%), radial-gradient(40% 34% at 55% 96%, rgba(168,85,247,.26), transparent 70%); pointer-events:none; }
+.stage > * { position:relative; z-index:1; }
+.grad { background:linear-gradient(92deg, #4fd1ac, #22d3ee 45%, #a78bfa); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.btn { background:linear-gradient(135deg, #14b8a6, #3b82f6); color:#fff; box-shadow:0 8px 24px -10px rgba(20,184,166,.8); }
+.btn:hover { background:linear-gradient(135deg, #2dd4bf, #60a5fa); }
+footer.foot { border-top:1px solid var(--line); margin-top:72px; }
 footer.foot { color:var(--muted); font-size:14px; padding:36px 0 48px; display:flex; flex-wrap:wrap; gap:8px 20px; justify-content:space-between; }
 `;
 
@@ -162,6 +170,23 @@ form.open { max-width:640px; }
 .err { color:var(--warn); font-size:14px; min-height:1.4em; margin-top:8px; }
 /* Stacked on phones: the box keeps its height (flex:1 in a column made it collapse to a sliver) and the button is full width. */
 @media (max-width: 560px) { form.open .row { flex-direction:column; } form.open input.field { flex:none; width:100%; } form.open .btn { width:100%; } }
+.stage .nav { border-bottom:1px solid rgba(255,255,255,.07); }
+.stage .hero { padding:72px 0 0; }
+.stage .eyebrow { background:rgba(79,209,172,.12); border:1px solid rgba(79,209,172,.3); }
+.stage .hero h1 { font-size:clamp(38px, 6.4vw, 72px); font-weight:800; letter-spacing:-.045em; max-width:16ch; }
+.stage .swap, .stage .ex, .stage input.field { background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.13); }
+.stage .swap .to b { background:linear-gradient(92deg, #4fd1ac, #22d3ee); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.stage .demo { max-width:none; margin:48px 0 0; border:1px solid rgba(255,255,255,.12); border-bottom:0; border-radius:16px 16px 0 0; overflow:hidden; background:#0f1514; box-shadow:0 -10px 90px -20px rgba(34,211,238,.45); }
+.stage .demo .chrome { display:flex; gap:7px; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); }
+.stage .demo .chrome i { width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.16); }
+.stage .demo video, .stage .demo img { border:0; border-radius:0; }
+.card { position:relative; overflow:hidden; transition:transform .15s, border-color .15s; }
+.card::before { content:""; position:absolute; left:0; right:0; top:0; height:3px; background:linear-gradient(90deg, #14b8a6, #3b82f6, #a78bfa); }
+.card:hover { transform:translateY(-2px); border-color:color-mix(in srgb, var(--accent) 50%, var(--line)); }
+section.grid3 { margin-top:72px; }
+.how { counter-reset:h; }
+section.how > div { counter-increment:h; border-top:0; padding-top:0; }
+section.how > div::before { content:counter(h); display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg, #14b8a6, #3b82f6); color:#fff; font-weight:750; margin-bottom:12px; }
 `;
 
 const landingJs = String.raw`
@@ -212,14 +237,14 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
 <style>${css}${landingCss}</style>
 </head>
 <body>
-<div class="wrap">
+<div class="stage"><div class="wrap">
   <nav class="nav">
     <a class="brand" href="/"><span class="mark">H</span>Helpdock</a>
     <div class="navlinks"><a href="#how">How it works</a><a href="https://github.com/flisk-sh/helpdock">GitHub</a></div>
   </nav>
   <section class="hero">
     <span class="eyebrow">Open source · No signup · No API key</span>
-    <h1>Any GitHub repo's docs, as a help center.</h1>
+    <h1>Any GitHub repo's docs, as a <span class="grad">help center</span>.</h1>
     <p class="lede">Search and browse a repository's Markdown, get answers quoted from the exact page with a link to it on GitHub, and give the same docs to your own AI over MCP.</p>
     <div class="swap">
       <div class="from mono"><s>github.com</s>/vercel/next.js</div>
@@ -227,9 +252,11 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
-    <figure class="demo"><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline preload="metadata" aria-describedby="demo-text"></video>
+    <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline preload="metadata" aria-describedby="demo-text"></video>
     <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
   </section>
+</div></div>
+<div class="wrap">
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
     <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><div class="codebox"><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre><button class="ghost" type="button" data-copy="[data-mcp]">Copy</button></div></div>
@@ -248,7 +275,8 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
 </html>`;
 
 const centerCss = String.raw`
-.top { position:sticky; top:0; z-index:5; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); }
+.top { position:sticky; top:0; z-index:5; border-bottom:1px solid var(--line); overflow:visible; }
+.top.stage::before, .top.stage::after { display:none; }
 .top .wrap { max-width:1280px; display:flex; align-items:center; gap:10px; height:58px; }
 .crumb { display:flex; align-items:center; gap:10px; min-width:0; flex:1; }
 .crumb .sep { color:var(--line); }
@@ -677,7 +705,7 @@ ${head(SITE_BASE, meta)}
 <style>${css}${centerCss}</style>
 </head>
 <body>
-<div class="top"><div class="wrap">
+<div class="top stage"><div class="wrap">
   <div class="crumb"><a class="brand" href="/"><span class="mark">H</span><span class="hide-sm">Helpdock</span></a><span class="sep">/</span><img class="avatar" id="avatar" alt="" width="22" height="22" hidden><a class="label mono" id="label" target="_blank" rel="noopener">…</a><span class="pill" id="pill">Loading…</span></div>
   <button class="ghost mobile-pages" id="pagesbtn" type="button">Pages</button>
   <button class="ghost" id="mcpbtn" type="button">Use in your AI</button>
