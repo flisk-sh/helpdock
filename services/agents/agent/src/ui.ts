@@ -37,6 +37,10 @@ export const EXAMPLES: Example[] = [
 /** The paths built at start (HELPDOCK_PREWARM) so the landing page's examples open at once. */
 export const EXAMPLE_REPOS = EXAMPLES.map((e) => e.path);
 
+/** Search engines index only the examples. Any other repository's text is not ours to vouch for, so a page built from
+ * someone's repository can't rank under this domain (or get it flagged) for what that repository says. */
+export const indexable = (path: string) => EXAMPLE_REPOS.includes(path.replace(/\/$/, ''));
+
 const css = String.raw`
 :root { --bg:#f6f5f1; --panel:#ffffff; --ink:#17171a; --muted:#66655f; --line:#e3e1da; --accent:#0d7a62; --accent-ink:#ffffff; --tint:#e6f2ee; --code:#f1efe9; --warn:#9a5b00; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121312; --panel:#1b1c1b; --ink:#ecebe6; --muted:#9c9b93; --line:#2c2d2b; --accent:#4fd1ac; --accent-ink:#0b1512; --tint:#163029; --code:#232422; --warn:#f0b35a; } }

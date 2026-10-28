@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { scriptHash } from '../src/guard';
 import { ASSET_FILES, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
-import { centerPage, centerPageFor, landingPage } from '../src/ui';
+import { centerPage, centerPageFor, indexable, landingPage } from '../src/ui';
 
 const attr = (html: string, re: RegExp) => html.match(re)?.[1];
 
@@ -21,6 +21,16 @@ describe('the head of each page', () => {
     expect(ld['@graph'].map((n: { '@type': string }) => n['@type'])).toEqual(
       expect.arrayContaining(['WebSite', 'Organization', 'WebApplication']),
     );
+  });
+
+  it('lets search engines index the examples and no other repository', () => {
+    expect(indexable('vercel/next.js/')).toBe(true);
+    expect(indexable('hashicorp/web-unified-docs/tree/main/content/terraform/v1.17.x/docs/')).toBe(true);
+    expect(indexable('someone/phish/')).toBe(false);
+    expect(indexable('vercel/next.js/tree/canary/docs/')).toBe(false);
+    const other = centerPageFor({ path: 'someone/phish/', title: 't', description: 'd', noindex: true });
+    expect(other).toContain('<meta name="robots" content="noindex">');
+    expect(scriptHash(other)).toBe(scriptHash(centerPage));
   });
 
   it('keeps the same script, so one CSP hash fits every repository', () => {

@@ -12,7 +12,7 @@ import type { Checkpoint, DocStore, SessionStore } from './store';
 import { createPostgresStores } from './store-postgres';
 import { createSqliteStores } from './store-sqlite';
 import { ASSET_FILES, llmsTxt, robotsTxt, securityTxt, sitemapXml, webManifest } from './seo';
-import { centerPage, centerPageFor, EXAMPLE_REPOS, landingPage } from './ui';
+import { centerPage, centerPageFor, EXAMPLE_REPOS, indexable, landingPage } from './ui';
 
 // Contract with Flisk (see docs/agents/ai-agents.md):
 //   AGENT_DURABILITY  postgres
@@ -222,6 +222,7 @@ function repoPage(ref: RepoRef): string {
     path,
     title: `${repoLabel(ref)} docs`,
     description: `Search, browse and ask the ${name} docs from GitHub, with answers quoted from the exact page. Also an MCP server for your AI.`.slice(0, 160),
+    noindex: !indexable(path),
   });
 }
 
