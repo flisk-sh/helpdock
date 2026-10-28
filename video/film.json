@@ -69,7 +69,9 @@
 				"Any GitHub repo's docs,",
 				"as a help center."
 			],
-			"pill": "<s>github.com</s> \u2192 <b>helpdock.flisk.sh</b>/owner/repo"
+			"pill": "<s>github.com</s> \u2192 <b>helpdock.flisk.sh</b>/owner/repo",
+			"vo": "GitHub docs, as a help center.",
+			"voAt": 0.4
 		},
 		{
 			"kind": "browser",
@@ -132,7 +134,8 @@
 					4.4,
 					"Replace github.com with helpdock.flisk.sh"
 				]
-			]
+			],
+			"vo": "Swap github dot com for helpdock dot flisk dot s h."
 		},
 		{
 			"kind": "browser",
@@ -176,7 +179,8 @@
 					3.8,
 					"Every page of its docs, ready to browse"
 				]
-			]
+			],
+			"vo": "Every page of the docs, ready to browse."
 		},
 		{
 			"kind": "browser",
@@ -225,7 +229,8 @@
 					4.6,
 					"Answers quoted from the exact page, with the link"
 				]
-			]
+			],
+			"vo": "Ask a question. The answer quotes the exact page, with a link."
 		},
 		{
 			"kind": "browser",
@@ -290,7 +295,8 @@
 					4.0,
 					"The same docs in your AI, over MCP"
 				]
-			]
+			],
+			"vo": "And your AI can read the same docs, over M C P."
 		},
 		{
 			"kind": "card",
@@ -300,7 +306,8 @@
 				"Free. No signup."
 			],
 			"sub": "No API key \u00b7 open source \u00b7 an MCP server for every repo",
-			"pill": "helpdock.flisk.sh/<b>owner/repo</b>"
+			"pill": "helpdock.flisk.sh/<b>owner/repo</b>",
+			"vo": "Free, with no signup."
 		}
 	]
 }

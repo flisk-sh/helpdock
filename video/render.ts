@@ -1,11 +1,14 @@
-// Renders the product film from film.json: frames of film.html through headless Chrome, then
+// Renders the product film from film.json: frames of film.html through headless Chrome, a voice-over and music
+// bed (audio.ts: each scene's "vo" line, spoken by edge-tts), then
+//   - out/film.mp4, the 1080p film with sound, and out/film.srt,
 //   - an MP4 and a poster, embedded into the app as a generated module (served at /demo.mp4 and /demo.jpg),
 //   - docs/demo.gif for the README.
 //   bun video/render.ts                 the whole film
 //   bun video/render.ts stills 2 7.5    video/out/still-<t>.png at those times, to check a scene
-// Needs ffmpeg and Chrome (CHROME=/path/to/chrome to choose one). Take the screenshots first: bun video/shots.ts.
+// Needs ffmpeg, edge-tts and Chrome (CHROME=/path/to/chrome to choose one). Take the screenshots first: bun video/shots.ts.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { soundtrack } from "./audio";
 import { launch } from "./cdp";
 
 const dir = import.meta.dir;
@@ -69,10 +72,10 @@ try {
 	} else {
 		const fps = Number(config.fps ?? 30);
 		const n = Math.ceil(film.duration * fps);
-		const master = join(dir, "out", "film.mp4");
+		const frames = join(dir, "out", "frames.mp4");
 		const ff = Bun.spawn(
 			["ffmpeg", "-loglevel", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-c:v", "mjpeg", "-i", "-",
-				"-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p", master],
+				"-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p", frames],
 			{ stdin: "pipe" },
 		);
 		const t0 = Date.now();
@@ -88,10 +91,19 @@ try {
 			const r = Bun.spawnSync(["ffmpeg", "-loglevel", "error", "-y", ...args]);
 			if (r.exitCode !== 0) throw new Error(r.stderr.toString());
 		};
-		// For the page: 1280×720, small enough to embed, muted.
+		// The film with its soundtrack, at -14 LUFS.
+		const { mix } = soundtrack(
+			film.scenes.map((s: { start: number }, i: number) => ({ ...config.scenes[i], start: s.start })),
+			film.duration,
+			join(dir, "out"),
+		);
+		const master = join(dir, "out", "film.mp4");
+		run(["-i", frames, "-i", mix, "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+			"-ar", "48000", "-shortest", "-movflags", "+faststart", master]);
+		// For the page: 1280×720, small enough to embed. It autoplays muted; its controls turn the voice on.
 		const mp4 = join(dir, "out", "demo.mp4");
 		run(["-i", master, "-vf", "scale=1280:-2:flags=lanczos", "-c:v", "libx264", "-preset", "slow", "-crf", "27",
-			"-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", mp4]);
+			"-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", mp4]);
 		const poster = join(dir, "out", "demo.jpg");
 		run(["-ss", String(config.posterAt ?? 6), "-i", master, "-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "4", poster]);
 		// For the README: a GIF, which GitHub plays inline.

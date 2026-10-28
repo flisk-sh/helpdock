@@ -62,10 +62,13 @@ describe('files for crawlers', () => {
 });
 
 describe('how-it-works clip', () => {
-  it('autoplays muted on the landing page, with a still for reduced motion', () => {
+  it('autoplays muted on the landing page, with controls for the narration and a still for reduced motion', () => {
     expect(landingPage).toContain('<video src="/demo.mp4" poster="/demo.jpg"');
-    expect(landingPage).toContain('autoplay muted loop playsinline');
+    expect(landingPage).toContain('autoplay muted loop playsinline controls');
     expect(landingPage).toContain('prefers-reduced-motion: reduce');
-    expect(Buffer.from(VIDEO['demo.mp4'].base64, 'base64').subarray(4, 8).toString()).toBe('ftyp');
+    const mp4 = Buffer.from(VIDEO['demo.mp4'].base64, 'base64');
+    expect(mp4.subarray(4, 8).toString()).toBe('ftyp');
+    // the narration: an AAC track, which the controls unmute
+    expect(mp4.includes('mp4a')).toBe(true);
   });
 });
