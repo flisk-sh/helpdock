@@ -11,7 +11,7 @@
 // API). Every way stops at fixed limits so a huge repository cannot exhaust a small instance, and the repository
 // name is validated, so a request can never make the server fetch an address of its choosing.
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -581,11 +581,15 @@ export async function readRepoViaGit(
     await gitIn('checkout', '--quiet');
     const sha = (await gitIn('rev-parse', 'HEAD')).trim();
     const paths = (await gitIn('ls-files', '-z')).split('\0').filter(Boolean);
+    const root = await realpath(repo);
     const sized: Array<{ path: string; size: number }> = [];
     for (const path of paths) {
       if (!isDocPath(path) || !inScope(path, ref.scope)) continue;
       try {
-        const st = await stat(join(repo, path));
+        // A repository decides where its symlinks point: docs/a.md -> /etc/passwd would put the server's own files in
+        // the index. Only files that are really inside the clone are read.
+        if (!(await realpath(join(repo, path))).startsWith(`${root}/`)) continue;
+        const st = await lstat(join(repo, path));
         if (st.isFile()) sized.push({ path, size: st.size });
       } catch {
         // Not checked out (outside the sparse patterns): skip.

@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { inScope, repoBase, sparsePatterns, parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, selectDocs } from '../src/github';
+import { inScope, repoBase, sparsePatterns, parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, readRepoViaGit, selectDocs } from '../src/github';
 
 describe('parseRepoPath', () => {
   it('reads owner, repo and the rest', () => {
@@ -155,5 +159,36 @@ describe('HashiCorp MDX', () => {
   it('turns callouts into quotes and drops includes, and uses page_title', () => {
     const src = '---\npage_title: Expressions - Configuration Language\n---\n\n@include \'x.mdx\'\n\n~> **Warning:** Be careful.\n\nText.';
     expect(normalizeMarkdown('a.mdx', src)).toBe('# Expressions - Configuration Language\n\n\n\n> **Warning:** Be careful.\n\nText.');
+  });
+});
+
+describe('reading a repository with git', () => {
+  // A local repository stands in for github.com (url.<path>.insteadOf), so this runs offline.
+  it('never follows a symlink out of the clone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'helpdock-test-'));
+    const env = { ...process.env };
+    try {
+      const secret = join(dir, 'secret.txt');
+      writeFileSync(secret, 'server-only secret');
+      const work = join(dir, 'work');
+      const sh = (...args: string[]) => execFileSync('git', args, { cwd: work, stdio: 'ignore' });
+      mkdirSync(join(work, 'docs'), { recursive: true });
+      sh('init', '-q');
+      writeFileSync(join(work, 'README.md'), '# Hi\n\nHello.');
+      symlinkSync(secret, join(work, 'docs', 'leak.md'));
+      sh('add', '-A');
+      sh('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'x');
+      Object.assign(process.env, {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: `url.file://${work}/.git.insteadOf`,
+        GIT_CONFIG_VALUE_0: 'https://github.com/evil/repo.git',
+      });
+      const read = await readRepoViaGit({ owner: 'evil', repo: 'repo' });
+      expect(read.files.map((f) => f.path)).toEqual(['README.md']);
+      expect(JSON.stringify(read.files)).not.toContain('server-only secret');
+    } finally {
+      process.env = env;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
