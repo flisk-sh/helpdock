@@ -11,7 +11,7 @@
 // API). Every way stops at fixed limits so a huge repository cannot exhaust a small instance, and the repository
 // name is validated, so a request can never make the server fetch an address of its choosing.
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -105,16 +105,20 @@ export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | 
   const tree = /^\/tree\/([^/]+)\/(.+?)\/?$/.exec(rest);
   if (tree) {
     let segments: string[];
+    let branch: string;
     try {
       segments = tree[2].split('/').map(decodeURIComponent);
+      branch = decodeURIComponent(tree[1]);
     } catch {
       return null;
     }
     let route = '';
     if (segments.length > 1 && ROUTES.has(segments[segments.length - 1])) route = `/${segments.pop()}`;
     else if (segments.length === 1 && ROUTES.has(segments[0])) return { owner, repo, rest: `/${segments[0]}` };
-    if (segments.some((s) => !s || s === '.' || s === '..' || /[\0\\/]/.test(s)) || segments.join('/').length > 200) return null;
-    return { owner, repo, rest: route, scope: segments.join('/'), branch: decodeURIComponent(tree[1]) };
+    // Control characters too: a newline in the folder would be a second pattern in git's sparse-checkout list.
+    if (segments.some((s) => !s || s === '.' || s === '..' || /[\x00-\x1f\x7f\\/]/.test(s)) || segments.join('/').length > 200) return null;
+    if (/[\x00-\x1f\x7f]/.test(branch)) return null;
+    return { owner, repo, rest: route, scope: segments.join('/'), branch };
   }
   // Other GitHub paths below a repository (blob/wiki/issues/...) all mean "this repository" here.
   if (/^\/(tree|blob|wiki|issues|pulls|discussions|releases)(\/|$)/.test(rest)) rest = '';
@@ -581,11 +585,15 @@ export async function readRepoViaGit(
     await gitIn('checkout', '--quiet');
     const sha = (await gitIn('rev-parse', 'HEAD')).trim();
     const paths = (await gitIn('ls-files', '-z')).split('\0').filter(Boolean);
+    const root = await realpath(repo);
     const sized: Array<{ path: string; size: number }> = [];
     for (const path of paths) {
       if (!isDocPath(path) || !inScope(path, ref.scope)) continue;
       try {
-        const st = await stat(join(repo, path));
+        // A repository decides where its symlinks point: docs/a.md -> /etc/passwd would put the server's own files in
+        // the index. Only files that are really inside the clone are read.
+        if (!(await realpath(join(repo, path))).startsWith(`${root}/`)) continue;
+        const st = await lstat(join(repo, path));
         if (st.isFile()) sized.push({ path, size: st.size });
       } catch {
         // Not checked out (outside the sparse patterns): skip.

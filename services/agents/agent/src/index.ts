@@ -360,6 +360,9 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   }
 
   if (sub === 'page' && req.method === 'GET') {
+    // A page not rendered lately is fetched from GitHub and rendered: limited like /lead, which does the same work.
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
     const source = url.searchParams.get('source') ?? '';
     const rendered = source ? await renderedPage(ws, source) : null;
     if (!rendered) return sendJson(res, 404, { error: 'no such page' });
