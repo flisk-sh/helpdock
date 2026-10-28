@@ -10,7 +10,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check . --write",
     "seed:pack": "bun scripts/pack-seed-docs.ts",
-    "icons": "bun scripts/icons.ts"
+    "icons": "bun scripts/icons.ts",
+    "video": "bun scripts/video.ts"
   },
   "dependencies": {
     "@flisk-sh/md2html": "^0.1.0",

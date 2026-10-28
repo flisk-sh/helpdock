@@ -83,6 +83,7 @@ export function securityHeaders(html: string): Record<string, string> {
       "connect-src 'self'",
       // Images in docs and READMEs come from many hosts (badges, CDNs, raw.githubusercontent.com); https only.
       "img-src 'self' data: https:",
+    "media-src 'self'",
       "base-uri 'none'",
       "form-action 'self'",
       "frame-ancestors 'none'",

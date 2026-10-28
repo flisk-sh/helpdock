@@ -135,6 +135,11 @@ const landingCss = String.raw`
 .swap .to a { font-size:clamp(16px, 2.6vw, 22px); color:var(--ink); text-decoration:none; overflow-wrap:anywhere; }
 .swap .to a:hover { text-decoration:underline; }
 .swap .to b { color:var(--accent); }
+.demo { margin:28px 0 0; max-width:560px; }
+.demo video, .demo img { display:block; width:100%; height:auto; border-radius:14px; border:1px solid var(--line); background:var(--panel); }
+.demo .still { display:none; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+@media (prefers-reduced-motion: reduce) { .demo video { display:none; } .demo .still { display:block; } }
 form.open { max-width:640px; }
 .examples { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:10px; margin:22px 0 8px; }
 .ex { display:flex; gap:12px; align-items:center; text-decoration:none; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
@@ -222,6 +227,8 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <div class="examples">${examples()}</div>
+    <figure class="demo"><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline preload="metadata" aria-describedby="demo-text"></video>
+    <figcaption id="demo-text" class="sr">A 13-second clip: github.com is replaced with helpdock.flisk.sh in a repository address, its docs open as a help center, a question is answered with a quote from the exact page and its link, and the same docs are added to an AI assistant over MCP.</figcaption></figure>
   </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>

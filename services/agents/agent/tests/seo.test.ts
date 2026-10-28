@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { scriptHash } from '../src/guard';
 import { ASSET_FILES, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
 import { centerPage, centerPageFor, indexable, landingPage } from '../src/ui';
+import { VIDEO } from '../src/video.generated';
 
 const attr = (html: string, re: RegExp) => html.match(re)?.[1];
 
@@ -57,5 +58,14 @@ describe('files for crawlers', () => {
     for (const name of Object.values(ICONS)) expect(ASSET_FILES.get(`/${name}`)).toBeDefined();
     const og = ASSET_FILES.get('/og.png')?.body as Buffer;
     expect([og.readUInt32BE(16), og.readUInt32BE(20)]).toEqual([1200, 630]);
+  });
+});
+
+describe('how-it-works clip', () => {
+  it('autoplays muted on the landing page, with a still for reduced motion', () => {
+    expect(landingPage).toContain('<video src="/demo.mp4" poster="/demo.jpg"');
+    expect(landingPage).toContain('autoplay muted loop playsinline');
+    expect(landingPage).toContain('prefers-reduced-motion: reduce');
+    expect(Buffer.from(VIDEO['demo.mp4'].base64, 'base64').subarray(4, 8).toString()).toBe('ftyp');
   });
 });

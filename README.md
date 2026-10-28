@@ -6,6 +6,8 @@
 https://github.com/vercel/next.js  →  https://helpdock.flisk.sh/vercel/next.js
 ```
 
+[![How Helpdock works: replace github.com with helpdock.flisk.sh, browse the docs, get answers quoted from the exact page, and add the docs to your AI over MCP](docs/demo.gif)](https://helpdock.flisk.sh)
+
 - **A help center for any public repo.** Ask in your own words; answers are passages quoted from the docs (whole paragraphs and code blocks, not fragments), each linked to its file and heading on GitHub. Every page is browsable.
 - **An MCP server per repo.** `https://helpdock.flisk.sh/owner/repo/mcp` gives Claude, ChatGPT, Cursor or Codex that repo's docs: `search_docs` and `ask_help_center`, read-only, no key.
 - **Your AI, not ours.** Helpdock never calls a model. Under every answer, *Ask your AI* hands the question and the cited passages to the visitor's own ChatGPT or Claude.
@@ -119,3 +121,5 @@ flisk resource my-tools --type mcp --stack agents
 ```
 
 See [flisk](https://github.com/flisk-sh/flisk) and the website [llms.txt](https://flisk.sh/llms.txt) for the full contract.
+
+The clip on the landing page and above is drawn by `services/agents/agent/scripts/video.ts` (`bun run video`, needs ffmpeg).

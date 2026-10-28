@@ -13,6 +13,7 @@ import { createPostgresStores } from './store-postgres';
 import { createSqliteStores } from './store-sqlite';
 import { ASSET_FILES, llmsTxt, robotsTxt, securityTxt, sitemapXml, webManifest } from './seo';
 import { centerPage, centerPageFor, EXAMPLE_REPOS, indexable, landingPage } from './ui';
+import { VIDEO } from './video.generated';
 
 // Contract with Flisk (see docs/agents/ai-agents.md):
 //   AGENT_DURABILITY  postgres
@@ -241,12 +242,40 @@ function serveSiteFile(req: IncomingMessage, res: ServerResponse, pathname: stri
     '/site.webmanifest': ['application/manifest+json', () => webManifest()],
     '/.well-known/security.txt': ['text/plain; charset=utf-8', () => securityTxt(base)],
   };
+  const video = VIDEO[pathname.slice(1)];
+  if (video) {
+    sendBytes(req, res, Buffer.from(video.base64, 'base64'), video.type);
+    return true;
+  }
   if (!asset && !(pathname in text)) return false;
   res.statusCode = 200;
   res.setHeader('content-type', asset ? asset.type : text[pathname][0]);
   res.setHeader('cache-control', asset ? 'public, max-age=604800' : 'public, max-age=3600');
   res.end(req.method === 'HEAD' ? undefined : asset ? asset.body : text[pathname][1]());
   return true;
+}
+
+/** The how-it-works clip and its poster. Safari plays a video only from a server that answers byte ranges. */
+function sendBytes(req: IncomingMessage, res: ServerResponse, body: Buffer, type: string) {
+  res.setHeader('content-type', type);
+  res.setHeader('cache-control', 'public, max-age=604800');
+  res.setHeader('accept-ranges', 'bytes');
+  const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ''));
+  let start = 0;
+  let end = body.length - 1;
+  if (range && (range[1] !== '' || range[2] !== '')) {
+    start = range[1] === '' ? body.length - Number(range[2]) : Number(range[1]);
+    if (range[1] !== '' && range[2] !== '') end = Math.min(Number(range[2]), body.length - 1);
+    if (start < 0 || start > end) {
+      res.statusCode = 416;
+      res.setHeader('content-range', `bytes */${body.length}`);
+      return res.end();
+    }
+    res.statusCode = 206;
+    res.setHeader('content-range', `bytes ${start}-${end}/${body.length}`);
+  } else res.statusCode = 200;
+  res.setHeader('content-length', String(end - start + 1));
+  return res.end(req.method === 'HEAD' ? undefined : body.subarray(start, end + 1));
 }
 
 function sendPage(req: IncomingMessage, res: ServerResponse, html: string, headers: Record<string, string>) {
