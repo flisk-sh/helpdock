@@ -129,22 +129,21 @@ for (const s of scenes) for (const [, src] of s.imgs || []) if (!images.has(src)
   const img = document.createElement("img"); img.src = src; img.style.opacity = 0; $("page").appendChild(img); images.set(src, img);
 }
 
-/** The address bar: the text of `from`, turning into `to` (delete what differs at the front, then type). */
+/** The address bar: the text of `from`, turning into `to`. What the two share at either end stays; the rest of
+ * `from` is deleted, then the rest of `to` is typed. */
 function omni(o, lt) {
   if (!o) return "";
   const { from, to, at, dur } = o;
-  let k = 0; while (k < Math.min(from.length, to.length) && from[from.length - 1 - k] === to[to.length - 1 - k]) k++;
-  const suffix = from.slice(from.length - k), aPre = from.slice(0, from.length - k), bPre = to.slice(0, to.length - k);
+  let p = 0; while (p < Math.min(from.length, to.length) && from[p] === to[p]) p++;
+  let k = 0; while (k < Math.min(from.length, to.length) - p && from[from.length - 1 - k] === to[to.length - 1 - k]) k++;
+  const head = from.slice(0, p), tail = from.slice(from.length - k);
+  const aMid = from.slice(p, from.length - k), bMid = to.slice(p, to.length - k);
   const x = clamp((lt - at) / dur);
   const caret = lt >= at - 0.3 && lt <= at + dur + 0.4 && Math.floor(lt * 3) % 2 === 0 ? '<span class="caret"></span>' : "";
   if (lt < at) return `<span class="rest">${esc(from)}</span>`;
-  const del = aPre.length / Math.max(1, aPre.length + bPre.length);
-  if (x < del) {
-    const kept = aPre.slice(0, Math.round(aPre.length * (1 - x / del)));
-    return `<span class="pre">${esc(kept)}</span>${caret}<span class="rest">${esc(suffix)}</span>`;
-  }
-  const typed = bPre.slice(0, Math.round(bPre.length * ((x - del) / (1 - del || 1))));
-  return `<span class="pre">${esc(typed)}</span>${caret}<span class="rest">${esc(suffix)}</span>`;
+  const del = aMid.length / Math.max(1, aMid.length + bMid.length);
+  const mid = x < del ? aMid.slice(0, Math.round(aMid.length * (1 - x / del))) : bMid.slice(0, Math.round(bMid.length * ((x - del) / (1 - del || 1))));
+  return `<span class="rest">${esc(head)}</span><span class="pre">${esc(mid)}</span>${caret}<span class="rest">${esc(tail)}</span>`;
 }
 
 function card(c) {
