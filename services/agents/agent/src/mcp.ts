@@ -57,8 +57,12 @@ export function buildMcpServer(deps: McpDeps): McpServer {
 // A new server and transport per request keeps the endpoint stateless, so a restart or a sleeping free instance loses
 // no MCP session.
 export async function handleMcp(req: IncomingMessage, res: ServerResponse, body: unknown, deps: McpDeps) {
+  // The SDK answers 406 unless the client accepts both JSON and an event stream. Some directory checks send only JSON,
+  // so accept either: this endpoint returns plain JSON, which is valid Streamable HTTP for a server with no streams.
+  const accept = req.headers.accept ?? '';
+  if (!accept.includes('application/json') || !accept.includes('text/event-stream')) req.headers.accept = 'application/json, text/event-stream';
   const server = buildMcpServer(deps);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     transport.close();
     server.close();
