@@ -102,6 +102,8 @@ input.field:focus { outline:2px solid var(--accent); outline-offset:1px; }
 .btn:hover { background:linear-gradient(135deg, #2dd4bf, #60a5fa); }
 footer.foot { border-top:1px solid var(--line); margin-top:72px; }
 footer.foot { color:var(--muted); font-size:14px; padding:36px 0 48px; display:flex; flex-wrap:wrap; gap:8px 20px; justify-content:space-between; }
+footer.foot .badge { flex-basis:100%; }
+footer.foot .badge img { display:block; max-width:100%; height:auto; }
 `;
 
 // A placeholder that types example phrases, deletes them and types the next, as if someone were typing. It stops
@@ -331,7 +333,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     <div><b>Keeps nothing about you</b><span>The URL is the state. Indexes are rebuilt from GitHub every six hours.</span></div>
     <div><b>Runs anywhere</b><span>Open source, built and run with <a href="https://github.com/flisk-sh/flisk">Flisk</a>. Point it at your own docs with <span class="mono">flisk up</span>.</span></div>
   </section>
-  <footer class="foot"><span>Helpdock · <a href="https://github.com/flisk-sh/helpdock">flisk-sh/helpdock</a> · MIT</span><span>Public repositories only. Not affiliated with GitHub.</span></footer>
+  <footer class="foot"><span>Helpdock · <a href="https://github.com/flisk-sh/helpdock">flisk-sh/helpdock</a> · MIT</span><span>Public repositories only. Not affiliated with GitHub.</span><span class="badge"><a href="https://devhunt.org/tool/helpdock" target="_blank" rel="noopener" title="Helpdock on DevHunt"><img src="https://devhunt.org/badge/helpdock.svg" alt="Helpdock - Featured on DevHunt" width="220" height="54" loading="lazy"></a></span></footer>
 </div>
 <script>${typewriterJs}${landingJs}</script>
 </body>
