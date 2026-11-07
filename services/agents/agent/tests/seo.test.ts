@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scriptHash } from '../src/guard';
+import { scriptHash, securityHeaders } from '../src/guard';
 import { ASSET_FILES, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
 import { centerPage, centerPageFor, indexable, landingPage } from '../src/ui';
 import { VIDEO } from '../src/video.generated';
@@ -70,5 +70,21 @@ describe('how-it-works clip', () => {
     expect(mp4.subarray(4, 8).toString()).toBe('ftyp');
     // the narration: an AAC track, which the controls unmute
     expect(mp4.includes('mp4a')).toBe(true);
+  });
+});
+
+describe('DevHunt badge', () => {
+  const badge =
+    '<a href="https://devhunt.org/tool/helpdock" target="_blank" rel="noopener" title="Helpdock on DevHunt"><img src="https://devhunt.org/badge/helpdock.svg" alt="Helpdock - Featured on DevHunt" width="220" height="54" loading="lazy"></a>';
+
+  it('sits inside the landing page footer', () => {
+    const footer = /<footer class="foot">[\s\S]*?<\/footer>/.exec(landingPage)?.[0] ?? '';
+    expect(footer).toContain(badge);
+  });
+
+  it('is loadable under the CSP without widening it', () => {
+    const csp = securityHeaders(landingPage)['content-security-policy'];
+    expect(csp).toContain("img-src 'self' data: https:");
+    expect(csp).not.toContain('devhunt');
   });
 });
