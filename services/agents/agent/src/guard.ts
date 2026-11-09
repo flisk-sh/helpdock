@@ -78,7 +78,7 @@ export function securityHeaders(html: string): Record<string, string> {
   return {
     'content-security-policy': [
       "default-src 'none'",
-      `script-src ${scriptHash(html)}`,
+      `script-src ${scriptHash(html)} https://flisk.si`,
       "style-src 'unsafe-inline'",
       "connect-src 'self'",
       // Images in docs and READMEs come from many hosts (badges, CDNs, raw.githubusercontent.com); https only.
