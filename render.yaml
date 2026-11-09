@@ -15,9 +15,9 @@ services:
     autoDeploy: true
     healthCheckPath: /ready
     domains:
+      # One address only: the free plan allows two custom domains in the whole workspace. helpdock.flisk.sh
+      # redirects here from Cloudflare.
       - helpdock.flisk.si
-      # The address before the move to flisk.si. It keeps serving until it redirects.
-      - helpdock.flisk.sh
     envVars:
       # Any public GitHub repository at /owner/repo, and the landing page at /.
       - key: HELPDOCK_REPOS
