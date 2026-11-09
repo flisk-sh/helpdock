@@ -1,18 +1,18 @@
 # Helpdock
 
-**Any GitHub repo's docs, as a help center and an MCP server.** Replace `github.com` with `helpdock.flisk.sh`:
+**Any GitHub repo's docs, as a help center and an MCP server.** Replace `github.com` with `helpdock.flisk.si`:
 
 ```
-https://github.com/vercel/next.js  →  https://helpdock.flisk.sh/vercel/next.js
+https://github.com/vercel/next.js  →  https://helpdock.flisk.si/vercel/next.js
 ```
 
-[![How Helpdock works: replace github.com with helpdock.flisk.sh, browse the docs, get answers quoted from the exact page, and add the docs to your AI over MCP](docs/demo.gif)](https://helpdock.flisk.sh)
+[![How Helpdock works: replace github.com with helpdock.flisk.si, browse the docs, get answers quoted from the exact page, and add the docs to your AI over MCP](docs/demo.gif)](https://helpdock.flisk.si)
 
 - **A help center for any public repo.** Ask in your own words; answers are passages quoted from the docs (whole paragraphs and code blocks, not fragments), each linked to its file and heading on GitHub. Every page is browsable.
-- **An MCP server per repo.** `https://helpdock.flisk.sh/owner/repo/mcp` gives Claude, ChatGPT, Cursor or Codex that repo's docs: `search_docs` and `ask_help_center`, read-only, no key.
+- **An MCP server per repo.** `https://helpdock.flisk.si/owner/repo/mcp` gives Claude, ChatGPT, Cursor or Codex that repo's docs: `search_docs` and `ask_help_center`, read-only, no key.
 - **Your AI, not ours.** Helpdock never calls a model. Under every answer, *Ask your AI* hands the question and the cited passages to the visitor's own ChatGPT or Claude.
 - **No signup, no database, no API key.** The URL is the state. A repo is read on its first visit (one GitHub API call lists it, the Markdown is fetched in parallel; GitHub's archive is the fallback when the API limit is used up), listed again every six hours. Opening a repo costs almost no memory: the table of contents is a list of file paths and every page is fetched from GitHub when you open it. The SQLite full-text index is built for a repository only when someone asks it a question (a few seconds) and dropped after ten idle minutes. An optional `GITHUB_TOKEN` (read-only, public repositories) raises GitHub's limit from 60 to 5000 calls an hour.
-- **A folder of a repository, too.** Paste a GitHub folder link and only that folder opens: `helpdock.flisk.sh/hashicorp/web-unified-docs/tree/main/content/terraform/v1.17.x/docs` is the Terraform docs, with the same MCP server at its `/mcp`.
+- **A folder of a repository, too.** Paste a GitHub folder link and only that folder opens: `helpdock.flisk.si/hashicorp/web-unified-docs/tree/main/content/terraform/v1.17.x/docs` is the Terraform docs, with the same MCP server at its `/mcp`.
 - **Markdown, MDX and reStructuredText.** Django's docs (`docs/*.txt`) and any Sphinx `.rst` are converted to Markdown first: titles, code blocks, notes, signatures and cross-references. HashiCorp's MDX callouts and Docusaurus-style MDX work too.
 - **Or your own docs.** Without `HELPDOCK_REPOS`, `/` is a help center for your own Markdown (`seed-docs/`, `POST /docs`), on SQLite or your own Postgres. Built and run with [Flisk](https://github.com/flisk-sh/flisk).
 
@@ -39,7 +39,7 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
 
 ## Online
 
-Helpdock runs online for free at **helpdock.flisk.sh** on one Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)), with no database account and no AI key: without `DATABASE_URL` it uses Bun's built-in SQLite. Bring your own Postgres (Neon or any other) to keep added pages and history. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
+Helpdock runs online for free at **helpdock.flisk.si** on one Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)), with no database account and no AI key: without `DATABASE_URL` it uses Bun's built-in SQLite. Bring your own Postgres (Neon or any other) to keep added pages and history. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
 
 ## API
 

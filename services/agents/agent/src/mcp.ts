@@ -1,4 +1,4 @@
-// The public MCP endpoint (POST /mcp): visitors add https://helpdock.flisk.sh/mcp to their own AI (Claude, ChatGPT,
+// The public MCP endpoint (POST /mcp): visitors add https://helpdock.flisk.si/mcp to their own AI (Claude, ChatGPT,
 // Cursor, Codex) and it searches these docs itself. Read-only on purpose: adding pages stays behind the admin token
 // (POST /docs, or the local tools server's add_doc).
 import type { IncomingMessage, ServerResponse } from 'node:http';

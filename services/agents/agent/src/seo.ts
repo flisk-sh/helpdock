@@ -6,8 +6,8 @@ export const SITE = {
   name: 'Helpdock',
   tagline: "Any GitHub repo's docs as a help center and MCP server",
   description:
-    "Replace github.com with helpdock.flisk.sh: search and browse any public repository's docs, get cited answers, and plug them into your own AI over MCP.",
-  url: 'https://helpdock.flisk.sh/',
+    "Replace github.com with helpdock.flisk.si: search and browse any public repository's docs, get cited answers, and plug them into your own AI over MCP.",
+  url: 'https://helpdock.flisk.si/',
   repo: 'https://github.com/flisk-sh/helpdock',
   lang: 'en',
   locale: 'en_US',

@@ -1,6 +1,6 @@
 // The two pages, each one self-contained file with no build step and nothing loaded from elsewhere (the CSP allows
 // only the page's own hashed script):
-//   landingPage  / when HELPDOCK_REPOS=1: "replace github.com with helpdock.flisk.sh", with examples
+//   landingPage  / when HELPDOCK_REPOS=1: "replace github.com with helpdock.flisk.si", with examples
 //   centerPage   a help center: /owner/repo/ for a GitHub repository, or / (or /docs/) for this deployment's own docs
 // Both read everything they show from the API next to them (./status, ./pages, ./page, ./turn). Only the <head>
 // differs per repository (title, description, canonical address, social card); the script and its hash never change.
@@ -11,7 +11,7 @@ const SITE_BASE = (process.env.HELPDOCK_PUBLIC_URL || SITE.url).replace(/\/$/, '
 
 /** The repositories the landing page offers, built at start (HELPDOCK_PREWARM) so they open at once. */
 export interface Example {
-  /** What follows helpdock.flisk.sh/: owner/repo, or owner/repo/tree/<branch>/<folder> for a folder of it. */
+  /** What follows helpdock.flisk.si/: owner/repo, or owner/repo/tree/<branch>/<folder> for a folder of it. */
   path: string;
   name: string;
   /** The GitHub account whose avatar is shown. */
@@ -273,7 +273,7 @@ const STATS: [string, string][] = [
 ];
 /** A real answer for vercel/next.js, as the help center shows it, shortened to two of its passages. */
 const GH = 'https://github.com/vercel/next.js/blob/canary/docs/01-app';
-const SAMPLE = `<figure class="sample" aria-label="A sample answer"><div class="top"><span class="mono"><span data-host>helpdock.flisk.sh</span>/vercel/next.js</span><em>Sample answer</em></div>
+const SAMPLE = `<figure class="sample" aria-label="A sample answer"><div class="top"><span class="mono"><span data-host>helpdock.flisk.si</span>/vercel/next.js</span><em>Sample answer</em></div>
 <p class="q">How do I add middleware?</p>
 <p class="k">Quoted from the docs</p>
 <blockquote><p><span class="n">1</span>The <code>middleware.js</code> file convention has been <b>deprecated</b> in Next.js 16 and renamed to <code>proxy.js</code>. All functionality remains the same.</p><a href="${GH}/03-api-reference/03-file-conventions/middleware.mdx">03-file-conventions/middleware.mdx ↗</a></blockquote>
@@ -308,7 +308,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
     <p class="lede">Search and browse a repository's Markdown, get answers quoted from the exact page with a link to it on GitHub, and give the same docs to your own AI over MCP.</p>
     <div class="swap">
       <div class="from mono"><s>github.com</s>/vercel/next.js</div>
-      <div class="to"><a class="mono" id="tryurl" href="/vercel/next.js/"><b data-host>helpdock.flisk.sh</b>/vercel/next.js</a><button class="ghost" id="copytry" type="button">Copy</button></div>
+      <div class="to"><a class="mono" id="tryurl" href="/vercel/next.js/"><b data-host>helpdock.flisk.si</b>/vercel/next.js</a><button class="ghost" id="copytry" type="button">Copy</button></div>
     </div>
     <form class="open" id="open"><div class="row"><input class="field mono" id="repo" autocomplete="off" spellcheck="false" placeholder="github.com/owner/repo" aria-label="GitHub repository"><button class="btn">Open help center</button></div><div class="err" id="err"></div></form>
     <p class="reassure"><b>●</b> Free · Indexed in seconds · Nothing stored about you</p>
@@ -321,11 +321,11 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
 <div class="wrap">
   <section class="film"><p class="kick">See it run</p><h2>From a GitHub address to a cited answer.</h2><p class="sub">Swap the host, ask in your own words, follow the quote back to the file, then hand the same docs to your AI.</p>
     <figure class="demo"><div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div><img class="still" src="/demo.jpg" width="960" height="540" alt=""><video src="/demo.mp4" poster="/demo.jpg" width="960" height="540" autoplay muted loop playsinline controls preload="metadata" aria-describedby="demo-text"></video>
-    <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.sh in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
+    <figcaption id="demo-text" class="sr">A 23-second film: github.com is replaced with helpdock.flisk.si in the address of vercel/next.js, its docs open as a help center, the question "How do I add middleware?" is answered with passages quoted from the docs and links to them on GitHub, and the "Use in your AI" panel shows the MCP address.</figcaption></figure>
   </section>
   <section class="grid3">
     <div class="card"><h3>A help center</h3><p>Ask in your own words. Answers are passages quoted from the docs, each linked to its file and heading on GitHub. Every page is browsable.</p></div>
-    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><div class="codebox"><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp</pre><button class="ghost" type="button" data-copy="[data-mcp]">Copy</button></div></div>
+    <div class="card"><h3>An MCP server for your AI</h3><p>Every repository gets one at <span class="mono">/owner/repo/mcp</span>, for Claude, ChatGPT, Cursor or Codex:</p><div class="codebox"><pre class="mono" data-mcp>claude mcp add --transport http nextjs https://helpdock.flisk.si/vercel/next.js/mcp</pre><button class="ghost" type="button" data-copy="[data-mcp]">Copy</button></div></div>
     <div class="card"><h3>Your AI, not ours</h3><p>Helpdock never calls a model and needs no key. Under each answer, one click hands the question and the cited passages to your ChatGPT or Claude.</p></div>
   </section>
   <section class="how" id="how">
