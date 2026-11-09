@@ -10,12 +10,12 @@ describe('the head of each page', () => {
   const repo = centerPageFor({ path: 'vercel/next.js/', title: 'vercel/next.js docs', description: 'Search the vercel/next.js docs.' });
 
   it.each([
-    ['landing', landingPage, 'https://helpdock.flisk.sh/'],
-    ['repository', repo, 'https://helpdock.flisk.sh/vercel/next.js/'],
+    ['landing', landingPage, 'https://helpdock.flisk.si/'],
+    ['repository', repo, 'https://helpdock.flisk.si/vercel/next.js/'],
   ])('%s: one title, a canonical link, a social card and icons', (_, html, canonical) => {
     expect(html.match(/<title>/g)).toHaveLength(1);
     expect(attr(html, /<link rel="canonical" href="([^"]+)"/)).toBe(canonical);
-    expect(attr(html, /<meta property="og:image" content="([^"]+)"/)).toBe('https://helpdock.flisk.sh/og.png');
+    expect(attr(html, /<meta property="og:image" content="([^"]+)"/)).toBe('https://helpdock.flisk.si/og.png');
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
     expect(html).toContain('<link rel="icon" href="/favicon.ico"');
     const ld = JSON.parse(attr(html, /<script type="application\/ld\+json">(.+?)<\/script>/s) as string);

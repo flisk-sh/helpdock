@@ -1,4 +1,4 @@
-# Render Blueprint for helpdock.flisk.sh on free plans: render.com → New → Blueprint → flisk-sh/helpdock.
+# Render Blueprint for helpdock.flisk.si on free plans: render.com → New → Blueprint → flisk-sh/helpdock.
 # Nothing else to sign up for: no database (the agent uses Bun's built-in SQLite when DATABASE_URL is not set) and no
 # AI key (answers quote the docs; visitors take them to their own AI with the buttons or /mcp). See DEPLOY.md.
 #
@@ -15,6 +15,8 @@ services:
     autoDeploy: true
     healthCheckPath: /ready
     domains:
+      - helpdock.flisk.si
+      # The address before the move to flisk.si. It keeps serving until it redirects.
       - helpdock.flisk.sh
     envVars:
       # Any public GitHub repository at /owner/repo, and the landing page at /.
@@ -25,7 +27,7 @@ services:
       - key: HELPDOCK_MAX_BUILDS
         value: "2"
       - key: HELPDOCK_PUBLIC_URL
-        value: https://helpdock.flisk.sh/
+        value: https://helpdock.flisk.si/
       - key: HELPDOCK_PROXY
         value: last-forwarded
       - key: HELPDOCK_TURNS_PER_HOUR

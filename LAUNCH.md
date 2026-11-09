@@ -20,26 +20,26 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 **Tagline** (60 characters max), chosen first:
 
 1. Any GitHub repo's docs as a help center and MCP server (55)
-2. Replace github.com with helpdock.flisk.sh. Instant docs. (55)
+2. Replace github.com with helpdock.flisk.si. Instant docs. (55)
 3. Cited answers from any repo's docs, for you and your AI (55)
 
 **Description** (under 260 characters):
 
-> Replace github.com with helpdock.flisk.sh and any public repo gets a help center: ask in plain words, get passages quoted from the docs with links to the exact page. Plus an MCP server per repo for your AI. No signup, no API key, open source.
+> Replace github.com with helpdock.flisk.si and any public repo gets a help center: ask in plain words, get passages quoted from the docs with links to the exact page. Plus an MCP server per repo for your AI. No signup, no API key, open source.
 
 **Tags:** Developer Tools, Open Source, Artificial Intelligence.
 
 **Gallery (5):**
 
-1. The URL swap: `github.com/vercel/next.js` → `helpdock.flisk.sh/vercel/next.js`, and the help center it opens.
+1. The URL swap: `github.com/vercel/next.js` → `helpdock.flisk.si/vercel/next.js`, and the help center it opens.
 2. A question ("how do I add middleware?") answered with cited passages and code from the Next.js docs, linked to GitHub.
-3. "Use in your AI": `claude mcp add --transport http nextjs https://helpdock.flisk.sh/vercel/next.js/mcp`, then Claude Code answering from it.
+3. "Use in your AI": `claude mcp add --transport http nextjs https://helpdock.flisk.si/vercel/next.js/mcp`, then Claude Code answering from it.
 4. *Ask your AI*: ChatGPT opened with the question and the cited passages.
 5. How it works: one GitHub API call, Markdown fetched in parallel, SQLite full-text search, no model; built and run with Flisk.
 
 ## Maker first comment
 
-> Hi! Docs on GitHub are great until you need one answer: search finds the file, not the paragraph. Helpdock turns any public repo into a help center by URL: put helpdock.flisk.sh in place of github.com. It reads the repo's Markdown, indexes it with SQLite full-text search (no embeddings, no model), and answers with the passages themselves, each linked to the exact heading on GitHub.
+> Hi! Docs on GitHub are great until you need one answer: search finds the file, not the paragraph. Helpdock turns any public repo into a help center by URL: put helpdock.flisk.si in place of github.com. It reads the repo's Markdown, indexes it with SQLite full-text search (no embeddings, no model), and answers with the passages themselves, each linked to the exact heading on GitHub.
 >
 > Every repo also gets an MCP endpoint, so your Claude, ChatGPT or Cursor can search those docs directly. And if you want a written answer, one click hands the question and the cited passages to your own AI; we never call one.
 >
@@ -48,7 +48,7 @@ The Flisk launch on Oct 27 was never featured: infrastructure is hard to feature
 ## Before launch
 
 - [x] Public repo: https://github.com/flisk-sh/helpdock (published 2026-10-27).
-- [x] Live: https://helpdock.flisk.sh (Render free plan; it sleeps after 15 idle minutes, so switch to Starter for launch day).
+- [x] Live: https://helpdock.flisk.si (Render free plan; it sleeps after 15 idle minutes, so switch to Starter for launch day).
 - [ ] Record the gallery from a real run; no mockups.
 - [ ] Ask Product Hunt support whether a product built on Flisk, launched by Flisk's makers, counts as separate from the Flisk listing.
 - [ ] Post the night-before note to the people who already use Flisk (no vote ask).

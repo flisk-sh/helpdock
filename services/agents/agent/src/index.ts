@@ -31,7 +31,7 @@ import { VIDEO } from './video.generated';
 //   HELPDOCK_TURNS_PER_HOUR questions per client address per hour (default 60)
 //   HELPDOCK_PUBLIC_URL     the site's public address, named in the prompt visitors take to their own AI
 //   HELPDOCK_REPOS          1: serve a help center for any public GitHub repository at /owner/repo, and a landing
-//                           page at / ("replace github.com with helpdock.flisk.sh"). Off: / is this help center
+//                           page at / ("replace github.com with helpdock.flisk.si"). Off: / is this help center
 //   HELPDOCK_REPO_BUILDS_PER_HOUR new repositories one client address may have built per hour (default 10)
 //   HELPDOCK_PREWARM        comma-separated owner/repo list built at start, so the landing page's examples open at
 //                           once (default: the examples on the landing page)

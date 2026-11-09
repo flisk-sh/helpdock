@@ -76,8 +76,8 @@ describe('answers', () => {
 
   it('aiPrompt carries the question and the numbered passages, with links when known', () => {
     const sources = toSources('why?', [hit(1), hit(2, { section: '' })], (h) => (h.id === 1 ? 'https://gh/p1' : undefined));
-    const p = aiPrompt('why?', sources, 'https://helpdock.flisk.sh/');
-    expect(p).toContain('help center at https://helpdock.flisk.sh/');
+    const p = aiPrompt('why?', sources, 'https://helpdock.flisk.si/');
+    expect(p).toContain('help center at https://helpdock.flisk.si/');
     expect(p).toContain('Question: why?');
     expect(p).toContain('[1] Page 1 › Section 1 (https://gh/p1)\ntext 1');
     expect(p).toContain('[2] Page 2 (page-2.md)\ntext 2');
