@@ -195,7 +195,7 @@ function canWriteDocs(req: IncomingMessage): boolean {
 // page is real work: 470 of them took 2.7 s per request on a 0.1 CPU instance). Keyed by the store, checked by count.
 // The key also says whether the list came from a complete index: a repository's list without one has titles from file
 // names, and must not stay cached once the index brings the real titles (the page count is the same either way).
-const pageLists = new WeakMap<DocStore, { key: string; list: { pages: unknown[]; groups: string[] } }>();
+const pageLists = new WeakMap<DocStore, { key: string; list: { pages: unknown[]; groups: string[]; questions: string[] } }>();
 async function pageList(docs: DocStore, repo?: RepoEntry) {
   const count = await docs.count();
   const key = repo ? `${count}:${repo.index && !repo.index.adding ? 'index' : 'list'}:${repo.builtAt}` : String(count);
@@ -218,7 +218,7 @@ async function pageList(docs: DocStore, repo?: RepoEntry) {
       ...(start ? { start } : {}),
     };
   });
-  const list = { pages, groups: repo?.groups ?? [] };
+  const list = { pages, groups: repo?.groups ?? [], questions: repo?.questions ?? [] };
   pageLists.set(docs, { key, list });
   return list;
 }
