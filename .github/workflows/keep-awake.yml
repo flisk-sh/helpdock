@@ -1,0 +1,36 @@
+# Keeps helpdock.flisk.si awake. Render's free web service sleeps after 15 idle minutes, and the next visitor then
+# waits about a minute. GitHub runs this every 5 minutes at no cost for a public repository (scheduled runs can start
+# a few minutes late, so the interval leaves room). It also asks the Flisk docs a question, so their search index is
+# built before a reader's first question; flisk.sh does the same when a reader reaches its docs.
+name: Keep awake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Wake the service
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 60 https://helpdock.flisk.si/ready || true)
+            echo "ready: $code"
+            [ "$code" = 200 ] && break
+            sleep 10
+          done
+      - name: Warm the Flisk docs index
+        run: |
+          curl -s -m 90 -o /dev/null -w 'search: %{http_code} in %{time_total}s\n' \
+            -X POST https://helpdock.flisk.si/flisk-sh/flisk/tree/main/docs/mcp \
+            -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_docs","arguments":{"query":"flisk","limit":1}}}'
