@@ -8,7 +8,8 @@
 //       { "name": "Get started", "pages": ["quickstart.md", "install/*.md"] },
 //       { "name": "Guides", "pages": ["guides/**"] }
 //     ],
-//     "start": ["quickstart.md", "install/npm.md"]
+//     "start": ["quickstart.md", "install/npm.md"],
+//     "questions": ["Do we need Kubernetes?", "How do I use it in CI?"]
 //   }
 //
 //   include  globs of the pages to show; without it, every page Helpdock finds
@@ -16,6 +17,8 @@
 //   groups   named sections of the page list, in this order; a page goes to the first group with a matching glob and
 //            is placed by the first glob it matches, then by path. Pages in no group come after them
 //   start    the pages a newcomer reads first ("Start here" cards), in order; without it, the first group's pages
+//   questions  the questions offered under the question box and typed as its placeholder, in order; without it, the
+//            start pages' titles
 //
 // Paths and globs are relative to that folder: `*` matches within one folder, `**` across folders, and a folder name
 // means everything in it. The file is read once per listing from raw.githubusercontent.com (no API call); a missing
@@ -33,6 +36,7 @@ export interface HelpdockConfig {
   exclude: string[];
   groups: ConfigGroup[];
   start: string[];
+  questions: string[];
 }
 
 /** Where a page goes in the page list: its group (index into `groups`) and its place in the whole list. */
@@ -45,6 +49,8 @@ const MAX_ENTRIES = 200;
 const MAX_GROUPS = 30;
 const MAX_ENTRY_CHARS = 300;
 const MAX_START = 12;
+const MAX_QUESTIONS = 12;
+const MAX_QUESTION_CHARS = 120;
 
 const strings = (value: unknown): string[] =>
   Array.isArray(value)
@@ -70,7 +76,12 @@ export function parseConfig(text: string | null): HelpdockConfig | null {
     .map((g) => ({ name: String(g.name).trim().slice(0, 80), pages: strings(g.pages) }))
     .filter((g) => g.name && g.pages.length > 0)
     .slice(0, MAX_GROUPS);
-  return { include: strings(obj.include), exclude: strings(obj.exclude), groups, start: strings(obj.start).slice(0, MAX_START) };
+  const questions = (Array.isArray(obj.questions) ? obj.questions : [])
+    .filter((q): q is string => typeof q === 'string')
+    .map((q) => q.replace(/\s+/g, ' ').trim())
+    .filter((q) => q.length > 0 && q.length <= MAX_QUESTION_CHARS)
+    .slice(0, MAX_QUESTIONS);
+  return { include: strings(obj.include), exclude: strings(obj.exclude), groups, start: strings(obj.start).slice(0, MAX_START), questions };
 }
 
 /** A glob as a regular expression over a whole path: `**` any folders, `*` within a folder, `?` one character. */
@@ -106,9 +117,9 @@ export function applyConfig<T extends { path: string }>(
   paths: T[],
   config: HelpdockConfig | null,
   scope?: string,
-): { paths: T[]; start: string[]; groups: string[]; placement: Map<string, Placement> } {
+): { paths: T[]; start: string[]; groups: string[]; questions: string[]; placement: Map<string, Placement> } {
   const placement = new Map<string, Placement>();
-  if (!config) return { paths, start: [], groups: [], placement };
+  if (!config) return { paths, start: [], groups: [], questions: [], placement };
   const rel = (p: string) => (scope && p.startsWith(`${scope}/`) ? p.slice(scope.length + 1) : p);
   const include = config.include.map(globToRegExp);
   const exclude = config.exclude.map(globToRegExp);
@@ -143,5 +154,5 @@ export function applyConfig<T extends { path: string }>(
     if (full && !start.includes(full)) start.push(full);
   }
   if (config.start.length === 0) start.push(...(members[0] ?? []).slice(0, 6).map((m) => m.path));
-  return { paths: kept, start, groups: config.groups.map((g) => g.name), placement };
+  return { paths: kept, start, groups: config.groups.map((g) => g.name), questions: config.questions, placement };
 }

@@ -451,10 +451,10 @@ details.fold.more > summary { color:var(--muted); }
 const centerJs = String.raw`
 var base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 var $ = function (id) { return document.getElementById(id); };
-var info = null, pages = [], groups = [], current = null, readmeShown = false, typer = null, homePhrases = [], homeTitle = document.title;
+var info = null, pages = [], groups = [], questions = [], current = null, readmeShown = false, typer = null, homePhrases = [], homeTitle = document.title;
 // The question box names what is being read: the open page's title, else this repository's start pages as examples.
 function askAbout(title) {
-  if (title) { if (typer) typer.set([title], true); else $('q').placeholder = 'Ask about ' + title; }
+  if (title) { if (typer) typer.set(['Ask about ' + title], true); else $('q').placeholder = 'Ask about ' + title; }
   else if (typer) typer.set(homePhrases);
 }
 function pageTitle(text) { document.title = text ? text + ' · ' + homeTitle : homeTitle; }
@@ -728,7 +728,7 @@ function renderSide(filter) {
 }
 function loadPages() {
   // The list is cached for a minute; once an index brings the pages' own titles it is a different list (?s=sections).
-  api('pages?v=' + encodeURIComponent(((info && info.sha) || '').slice(0, 12) + '-' + ((info && info.sections) || 0))).then(function (b) { pages = b.pages; groups = b.groups || []; renderSide($('filter').value); renderStart(); });
+  api('pages?v=' + encodeURIComponent(((info && info.sha) || '').slice(0, 12) + '-' + ((info && info.sections) || 0))).then(function (b) { pages = b.pages; groups = b.groups || []; questions = b.questions || []; renderSide($('filter').value); renderStart(); });
 }
 
 // "Start here": the pages a newcomer reads first, as cards with their lead sentence. Chosen by the file's own name
@@ -770,20 +770,21 @@ function renderStart() {
     grid.append(c);
     // Without an index a page's title is its file name ("Cli"); its real title and lead come from the page itself.
     if (!p.summary) api('lead?source=' + encodeURIComponent(p.source)).then(function (r) {
-      if (r.title) { ct.textContent = r.title; p.title = r.title; phrases[n] = r.title; if (chipOf[n]) { chipOf[n].textContent = r.title; } }
+      if (r.title) { ct.textContent = r.title; p.title = r.title; phrases[n] = r.title; if (!questions.length) homePhrases[n] = 'Ask about ' + r.title; if (chipOf[n]) { chipOf[n].textContent = r.title; } }
       if (r.lead) cs.textContent = r.lead; else c.classList.add('nolead');
     }).catch(function () {});
   });
   box.append(grid);
-  // The question box types this repository's own topics as examples.
-  homePhrases = phrases;
-  if (!typer) { typer = typewriter($('q'), phrases, 'Ask about '); if (current && currentTitle) typer.set([currentTitle], true); }
-  else if (!current) typer.set(phrases);
-  // Suggested questions: the same topics, phrased as one.
+  // The question box types the repository's own questions (.helpdock.json "questions"), else its start topics.
+  var own = questions.length > 0;
+  homePhrases = own ? questions.map(function (q) { return 'Ask: ' + q; }) : phrases.map(function (t) { return 'Ask about ' + t; });
+  if (!typer) { typer = typewriter($('q'), homePhrases, ''); if (current && currentTitle) askAbout(currentTitle); }
+  else if (!current) typer.set(homePhrases);
+  // Suggested questions: the repository's own, else the start topics.
   var chips = $('chips'); chips.textContent = '';
-  picks.slice(0, 4).forEach(function (p, n) {
-    var b = el('button', 'chip', p.title); b.type = 'button'; b.onclick = function () { ask(b.textContent); };
-    chipOf[n] = b;
+  (own ? questions.slice(0, 8) : picks.slice(0, 4)).forEach(function (p, n) {
+    var b = el('button', 'chip', own ? p : p.title); b.type = 'button'; b.onclick = function () { ask(b.textContent); };
+    if (!own) chipOf[n] = b;
     chips.append(b);
   });
 }

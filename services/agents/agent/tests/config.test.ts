@@ -14,7 +14,13 @@ describe('parseConfig', () => {
         other: true,
       }),
     );
-    expect(c).toEqual({ include: ['**'], exclude: ['drafts/**'], groups: [{ name: 'Get started', pages: ['quickstart.md'] }], start: ['quickstart.md'] });
+    expect(c).toEqual({
+      include: ['**'],
+      exclude: ['drafts/**'],
+      groups: [{ name: 'Get started', pages: ['quickstart.md'] }],
+      start: ['quickstart.md'],
+      questions: [],
+    });
   });
 
   it('is null for no file, broken JSON or a non-object', () => {
@@ -80,5 +86,24 @@ describe('applyConfig', () => {
   it('works on a whole repository (no scope)', () => {
     const out = applyConfig(listing('README.md', 'docs/a.md', 'notes/b.md'), parseConfig('{"exclude":["notes/**"]}'));
     expect(out.paths.map((p) => p.path)).toEqual(['README.md', 'docs/a.md']);
+  });
+});
+
+describe('questions in .helpdock.json', () => {
+  it('keeps short questions in order, trims spaces and drops the rest', () => {
+    const long = 'x'.repeat(121);
+    const c = parseConfig(JSON.stringify({ questions: ['  Do we need   Kubernetes? ', '', 42, long, 'How do I use it in CI?'] }));
+    expect(c?.questions).toEqual(['Do we need Kubernetes?', 'How do I use it in CI?']);
+  });
+
+  it('keeps at most twelve', () => {
+    const c = parseConfig(JSON.stringify({ questions: Array.from({ length: 20 }, (_, i) => `Question ${i}?`) }));
+    expect(c?.questions).toHaveLength(12);
+  });
+
+  it('passes them through applyConfig, and none without a config', () => {
+    const c = parseConfig(JSON.stringify({ questions: ['Why?'] }));
+    expect(applyConfig(listing('docs/a.md'), c, 'docs').questions).toEqual(['Why?']);
+    expect(applyConfig(listing('docs/a.md'), null, 'docs').questions).toEqual([]);
   });
 });

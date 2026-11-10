@@ -57,6 +57,8 @@ export interface RepoEntry {
   truncated: boolean;
   /** The pages the repository's .helpdock.json lists under "start", in order (full paths). */
   start: string[];
+  /** The questions the repository's .helpdock.json offers under the question box. */
+  questions: string[];
   /** The named groups of the page list from .helpdock.json, in order, and each grouped page's group and place. */
   groups: string[];
   placement: Map<string, Placement>;
@@ -314,6 +316,7 @@ export class RepoCache {
       bytes: previous?.bytes ?? 0,
       truncated: previous?.truncated ?? false,
       start: previous?.start ?? [],
+      questions: previous?.questions ?? [],
       groups: previous?.groups ?? [],
       placement: previous?.placement ?? new Map(),
       known: previous?.known ?? new Map(),
@@ -337,7 +340,7 @@ export class RepoCache {
         const tree = await deadline(this.listTree(ref, entry), BUILD_DEADLINE_MS);
         // The repository's own settings (.helpdock.json): pages to leave out, pages to start with.
         const config = parseConfig(await this.opts.config(ref, tree.sha).catch(() => null));
-        const { paths, start, groups, placement } = applyConfig(tree.paths, config, ref.scope);
+        const { paths, start, groups, questions, placement } = applyConfig(tree.paths, config, ref.scope);
         if (paths.length === 0) {
           entry.status = 'error';
           entry.error = 'This repository has no Markdown documentation.';
@@ -350,6 +353,7 @@ export class RepoCache {
           sha: tree.sha,
           paths,
           start,
+          questions,
           groups,
           placement,
           files: paths.length,
