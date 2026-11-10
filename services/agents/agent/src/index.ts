@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { join } from 'node:path';
 import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { renderMarkdown } from '@flisk-sh/md2html';
-import { docPriority, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef, repoBase } from './github';
-import { clientIp, isAdmin, parseProxyMode, RateLimiter, securityHeaders } from './guard';
+import { docPriority, githubAnchor, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef, repoBase } from './github';
+import { clientIp, isAdmin, parseProxyMode, RateLimiter, readCorsHeaders, securityHeaders } from './guard';
+import { localizeLinks, pageHref } from './links';
 import { handleMcp } from './mcp';
 import { BusyError, IndexNotReady, leadOf, RepoCache, type RepoEntry, repoLink } from './repos';
 import { seedPages } from './seed-docs.generated';
@@ -123,10 +124,24 @@ const rootWorkspace: Workspace = { docs, store, label: process.env.HELPDOCK_LABE
 // A turn: search the docs and answer with the best passages, each cited. No model and no outside API: the reply
 // is built from the docs alone, so the same question always gets the same answer.
 async function runTurn(ws: Workspace, input: string, site: string): Promise<Answer & { prompt: string }> {
-  const answer = extractiveAnswer(input, await ws.docs.search(input, 10), ws.link, htmlToMarkdown);
-  // Each source also comes as HTML (md2html: sanitized, links and images resolved against the file on GitHub).
-  const sources = answer.sources.map((src) => ({ ...src, html: renderMarkdown(src.excerpt, { baseUrl: src.url, headingIds: false }) }));
+  const answer = extractiveAnswer(input, await ws.docs.search(input, 10), ws.link, htmlToMarkdown, pageLinkFor(ws, site));
+  // Each source also comes as HTML (md2html: sanitized, links and images resolved against the file on GitHub), with
+  // links to other pages of the help center kept inside it.
+  const sources = answer.sources.map((src) => ({ ...src, html: localize(ws, renderMarkdown(src.excerpt, { baseUrl: src.url, headingIds: false })) }));
   return { ...answer, sources, prompt: aiPrompt(input, answer.sources, site + ws.base.slice(1)) };
+}
+
+/** A hit's page inside this help center (not on GitHub), at its section: https://…/owner/repo/#page=docs%2Fci.md. */
+function pageLinkFor(ws: Workspace, site: string): LinkFor {
+  const home = site + (ws.repo ? ws.base.slice(1) : REPOS ? 'docs/' : '');
+  return (hit) => home + pageHref(hit.source, hit.section ? githubAnchor(hit.section) : '');
+}
+
+/** Links in rendered HTML to pages of the same repository point at those pages here (see links.ts). */
+function localize(ws: Workspace, html: string): string {
+  const entry = ws.repo;
+  if (!entry) return html;
+  return localizeLinks(html, entry.ref, (path) => entry.paths.some((p) => p.path === path));
 }
 
 // The public address of the site, for the prompt that visitors take to their own AI and the MCP address the page
@@ -178,19 +193,34 @@ function canWriteDocs(req: IncomingMessage): boolean {
 
 // The page list with priorities and summaries, built once per index and kept until the index changes (a summary per
 // page is real work: 470 of them took 2.7 s per request on a 0.1 CPU instance). Keyed by the store, checked by count.
-const pageLists = new WeakMap<DocStore, { count: number; pages: unknown[] }>();
-async function pageList(docs: DocStore, scope?: string) {
+// The key also says whether the list came from a complete index: a repository's list without one has titles from file
+// names, and must not stay cached once the index brings the real titles (the page count is the same either way).
+const pageLists = new WeakMap<DocStore, { key: string; list: { pages: unknown[]; groups: string[] } }>();
+async function pageList(docs: DocStore, repo?: RepoEntry) {
   const count = await docs.count();
+  const key = repo ? `${count}:${repo.index && !repo.index.adding ? 'index' : 'list'}:${repo.builtAt}` : String(count);
   const cached = pageLists.get(docs);
-  if (cached && cached.count === count) return cached.pages;
+  if (cached && cached.key === key) return cached.list;
+  const scope = repo?.ref.scope;
   const pages = (await docs.pages()).map(({ lead, ...p }) => {
     // Inside a folder of a repository, pages are shown and ranked by their path from that folder.
     const rel = scope && p.source.startsWith(`${scope}/`) ? p.source.slice(scope.length + 1) : p.source;
-    // Inside a folder everything is documentation, whether or not its path says so.
-    return { ...p, rel, priority: docPriority(scope ? `docs/${rel}` : rel), summary: summarize(lead ?? '') };
+    // The repository's .helpdock.json: its groups and their order, and its "Start here" pages.
+    const placed = repo?.placement.get(p.source);
+    const start = repo ? repo.start.indexOf(p.source) + 1 : 0;
+    return {
+      ...p,
+      rel,
+      // Inside a folder everything is documentation, whether or not its path says so.
+      priority: docPriority(scope ? `docs/${rel}` : rel),
+      summary: summarize(lead ?? ''),
+      ...(placed ? { group: repo?.groups[placed.group], order: placed.order } : {}),
+      ...(start ? { start } : {}),
+    };
   });
-  pageLists.set(docs, { count, pages });
-  return pages;
+  const list = { pages, groups: repo?.groups ?? [] };
+  pageLists.set(docs, { key, list });
+  return list;
 }
 
 // Rendered pages, kept per index: a long README (36 sections, 132 images) took 1.5 s to render on 0.1 CPU. Least
@@ -208,7 +238,7 @@ async function renderedPage(ws: Workspace, source: string) {
   const found = await ws.docs.page(source);
   if (!found) return null;
   const url = ws.link?.({ source, section: '' } as never);
-  const sections = found.sections.map((sec) => ({ ...sec, html: renderMarkdown(sec.body, { baseUrl: url, headingIds: false }) }));
+  const sections = found.sections.map((sec) => ({ ...sec, html: localize(ws, renderMarkdown(sec.body, { baseUrl: url, headingIds: false })) }));
   const page = { ...found, sections, url };
   renderedPages.set(key, { docs: ws.docs, count, page });
   if (renderedPages.size > 300) renderedPages.delete(renderedPages.keys().next().value as string);
@@ -286,6 +316,17 @@ function sendPage(req: IncomingMessage, res: ServerResponse, html: string, heade
   return res.end(req.method === 'HEAD' ? undefined : html);
 }
 
+/** CORS on the read-only routes (see readCorsHeaders); true when it answered a preflight. */
+function allowReadCors(req: IncomingMessage, res: ServerResponse, sub: string): boolean {
+  const cors = readCorsHeaders(sub, req.method);
+  if (!cors) return false;
+  for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+  if (req.method !== 'OPTIONS') return false;
+  res.statusCode = 204;
+  res.end();
+  return true;
+}
+
 function validSession(req: IncomingMessage): string | null {
   const id = String(req.headers['x-session-id'] ?? '');
   return /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
@@ -356,7 +397,7 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
 
   if (sub === 'pages' && req.method === 'GET') {
     res.setHeader('cache-control', 'public, max-age=60');
-    return sendJson(res, 200, { pages: await pageList(ws.docs, ws.repo?.ref.scope) });
+    return sendJson(res, 200, await pageList(ws.docs, ws.repo));
   }
 
   if (sub === 'page' && req.method === 'GET') {
@@ -376,7 +417,8 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
     const q = (url.searchParams.get('q') ?? '').slice(0, MAX_QUESTION_CHARS);
     if (!q.trim()) return sendJson(res, 400, { error: 'q is required' });
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 5, 1), 20);
-    const hits = (await ws.docs.search(q, limit)).map(({ body: _body, ...h }) => ({ ...h, url: ws.link?.(h) }));
+    const page = pageLinkFor(ws, site);
+    const hits = (await ws.docs.search(q, limit)).map(({ body: _body, ...h }) => ({ ...h, url: ws.link?.(h), page: page(h) }));
     return sendJson(res, 200, { query: q, hits });
   }
 
@@ -411,6 +453,7 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
       name: ws.label,
       search: (q, limit) => ws.docs.search(q.slice(0, MAX_QUESTION_CHARS), limit),
       link: ws.link,
+      page: pageLinkFor(ws, site),
     });
   }
 
@@ -480,6 +523,7 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
     return res.end();
   }
   const sub = ref.rest.replace(/^\//, '').replace(/\/$/, '');
+  if (allowReadCors(req, res, sub)) return;
   if (sub === 'readme' && req.method === 'GET') {
     const wait = readLimit.hit(ip);
     if (wait) return tooMany(res, wait);
@@ -550,6 +594,7 @@ const server = createServer(async (req, res) => {
       if (ref) return await serveRepo(ref, req, res, url, ip);
     }
     const sub = url.pathname.replace(/^\/(docs\/)?/, '').replace(/\/$/, '');
+    if (allowReadCors(req, res, sub)) return;
     return await serveWorkspace(rootWorkspace, sub === '' && url.pathname.startsWith('/docs') ? 'docs' : sub, req, res, url, ip);
   } catch (error) {
     if (error instanceof HttpError) return sendJson(res, error.status, { error: error.message });
@@ -584,7 +629,7 @@ async function prewarm() {
     try {
       const entry = repos.get(ref);
       await entry.ready;
-      if (entry.stores) await pageList(entry.stores.docs, entry.ref.scope); // warm the page list too
+      if (entry.stores) await pageList(entry.stores.docs, entry); // warm the page list too
     } catch {
       // Busy or over memory: the example builds on its first visit instead.
     }

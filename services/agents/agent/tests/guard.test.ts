@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { clientIp, isAdmin, parseProxyMode, RateLimiter, scriptHash, securityHeaders } from '../src/guard';
+import { clientIp, isAdmin, parseProxyMode, RateLimiter, readCorsHeaders, scriptHash, securityHeaders } from '../src/guard';
 
 describe('RateLimiter', () => {
   it('allows the limit, then says how long to wait, then resets with the window', () => {
@@ -53,5 +53,22 @@ describe('securityHeaders', () => {
     const csp = securityHeaders(html)['content-security-policy'];
     expect(csp).toContain(`script-src 'sha256-${expected}'`);
     expect(csp).toContain("frame-ancestors 'none'");
+  });
+});
+
+describe('readCorsHeaders', () => {
+  it('lets any site read the read-only routes of a help center', () => {
+    for (const route of ['status', 'pages', 'page', 'search', 'lead', 'readme']) {
+      expect(readCorsHeaders(route, 'GET')?.['access-control-allow-origin']).toBe('*');
+    }
+    expect(readCorsHeaders('pages', 'OPTIONS')?.['access-control-allow-methods']).toBe('GET, HEAD, OPTIONS');
+  });
+
+  it('gives nothing to writes, sessions, turns or other methods', () => {
+    expect(readCorsHeaders('turn', 'POST')).toBeNull();
+    expect(readCorsHeaders('session', 'GET')).toBeNull();
+    expect(readCorsHeaders('docs', 'POST')).toBeNull();
+    expect(readCorsHeaders('search', 'POST')).toBeNull();
+    expect(readCorsHeaders('', 'GET')).toBeNull();
   });
 });
