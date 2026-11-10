@@ -90,7 +90,7 @@ const RESERVED = new Set(['health', 'ready', 'turn', 'search', 'docs', 'session'
  */
 // The routes below a help center; a scope folder named like one of them is read as the route (not "docs": that is a
 // route of the deployment's own docs only, and many repositories have a docs folder).
-const ROUTES = new Set(['status', 'pages', 'page', 'lead', 'search', 'turn', 'session', 'mcp', 'readme', 'warm', 'about']);
+const ROUTES = new Set(['status', 'pages', 'page', 'lead', 'search', 'turn', 'session', 'mcp', 'answer', 'readme', 'warm', 'about']);
 
 export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | null {
   const m = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);

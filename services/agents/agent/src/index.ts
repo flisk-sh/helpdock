@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
+import { AnswerCache, aiConfig, answerMessages, callWorkersAi, DailyCap, finishAnswer, pickPassages, redactSecrets } from './ai-answer';
 import { aboutFromReadme, aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { renderMarkdown } from '@flisk-sh/md2html';
 import { docPriority, githubAnchor, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef, repoBase } from './github';
@@ -34,6 +35,12 @@ import { VIDEO } from './video.generated';
 //   HELPDOCK_REPOS          1: serve a help center for any public GitHub repository at /owner/repo, and a landing
 //                           page at / ("replace github.com with helpdock.flisk.si"). Off: / is this help center
 //   HELPDOCK_REPO_BUILDS_PER_HOUR new repositories one client address may have built per hour (default 10)
+//   HELPDOCK_AI_ACCOUNT, HELPDOCK_AI_TOKEN  a Cloudflare account id and an API token allowed to run Workers AI. With
+//                           both, POST <help center>/answer writes an answer from the passages (see ai-answer.ts).
+//                           Without them Helpdock calls no model
+//   HELPDOCK_AI_REPOS       owner/repo help centers that may use it (default flisk-sh/flisk)
+//   HELPDOCK_AI_MODEL       Workers AI model (default @cf/qwen/qwen2.5-coder-32b-instruct)
+//   HELPDOCK_AI_PER_DAY     model calls a day for everyone together (default 50); HELPDOCK_AI_PER_HOUR per visitor (10)
 //   HELPDOCK_PREWARM        comma-separated owner/repo list built at start, so the landing page's examples open at
 //                           once (default: the examples on the landing page)
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
@@ -52,6 +59,17 @@ const readLimit = new RateLimiter(300, 60 * 1000);
 const REPOS = process.env.HELPDOCK_REPOS === '1';
 const buildLimit = new RateLimiter(Number(process.env.HELPDOCK_REPO_BUILDS_PER_HOUR || 10), 60 * 60 * 1000);
 const repos = new RepoCache();
+const AI = aiConfig(process.env);
+const aiDaily = new DailyCap(AI?.perDay ?? 0);
+const aiVisitorLimit = new RateLimiter(AI?.perVisitorPerHour ?? 0, 60 * 60 * 1000);
+type AiResult = {
+  answer: string | null;
+  notCovered: boolean;
+  dropped: number;
+  model: string;
+  sources: Array<{ n: number; source: string; section: string; title: string; url?: string; page?: string }>;
+};
+const aiCache = new AnswerCache<AiResult>();
 const centerHeaders = securityHeaders(centerPage);
 const landingHeaders = securityHeaders(landingPage);
 const PRODUCTION = process.env.NODE_ENV === 'production';
@@ -435,6 +453,47 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
     return sendJson(res, 200, { source, sections: await ws.docs.upsert(source, body.markdown) });
   }
 
+  // A written answer from the passages, when this deployment has a Workers AI key and the help center is allowed one.
+  // Public like /mcp: flisk.sh/docs calls it from the browser. The question is not stored.
+  if (sub === 'answer') {
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204;
+      return res.end();
+    }
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
+    const repoKey = ws.repo ? `${ws.repo.ref.owner}/${ws.repo.ref.repo}`.toLowerCase() : '';
+    if (!AI || !repoKey || !AI.repos.includes(repoKey)) return sendJson(res, 404, { error: 'AI answers are off for this help center', available: false });
+    const body = await readJson(req);
+    const question = redactSecrets(String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS));
+    if (question.length < 2) return sendJson(res, 400, { error: 'question is required' });
+    const cacheKey = AnswerCache.key(ws.base, question);
+    const cached = aiCache.get(cacheKey);
+    if (cached) return sendJson(res, 200, { ...cached, cached: true, available: true });
+    const wait = aiVisitorLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const passages = pickPassages(await ws.docs.search(question, 24));
+    const page = pageLinkFor(ws, site);
+    const sources = passages.map((h, i) => ({ n: i + 1, source: h.source, section: h.section, title: h.title, url: ws.link?.(h), page: page(h) }));
+    if (passages.length === 0) return sendJson(res, 200, { answer: null, notCovered: true, dropped: 0, model: AI.model, sources, available: true });
+    if (!aiDaily.take()) return sendJson(res, 503, { error: "Today's AI answers are used up. The passages above still answer.", available: false });
+    let reply: string;
+    try {
+      reply = await callWorkersAi(AI, answerMessages(question, passages));
+    } catch (err) {
+      console.error('[answer] model call failed:', (err as Error).message);
+      return sendJson(res, 502, { error: 'The AI answer is unavailable right now.', available: false });
+    }
+    const finished = finishAnswer(reply, passages.map((p) => `${p.title}\n${p.section}\n${p.body ?? ''}`));
+    const result: AiResult = { answer: finished.text, notCovered: finished.notCovered, dropped: finished.dropped, model: AI.model, sources };
+    aiCache.set(cacheKey, result);
+    // Counts only: never the question or the answer.
+    console.log(`[answer] ${repoKey}: shown=${finished.text !== null} notCovered=${finished.notCovered} dropped=${finished.dropped} left=${aiDaily.remaining()}`);
+    return sendJson(res, 200, { ...result, available: true });
+  }
+
   // Public, read-only MCP for the visitor's own AI. Stateless Streamable HTTP: POST only.
   if (sub === 'mcp') {
     res.setHeader('access-control-allow-origin', '*');
@@ -566,7 +625,8 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
     if (readLimit.hit(ip) === 0) void repos.ensureIndex(entry).catch(() => {});
     return sendJson(res, 202, { indexed: entry.indexed });
   }
-  const ws = await repoWorkspace(entry, sub === 'mcp' ? 40_000 : 20_000);
+  // An AI's tool call and an AI answer wait longer for a first index than a page does.
+  const ws = await repoWorkspace(entry, sub === 'mcp' || sub === 'answer' ? 40_000 : 20_000);
   if (!ws) {
     const status = entry.status === 'building' ? 503 : entry.notFound ? 404 : 502;
     if (status === 503) res.setHeader('retry-after', '3');

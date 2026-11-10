@@ -45,6 +45,30 @@ curl -s -X POST https://helpdock.flisk.si/turn -H 'content-type: application/jso
 
 The first prints `{"ready":true,...}` (after up to a minute if the service was asleep), the second a reply with `sources`.
 
+## (Optional) Written answers with Workers AI
+
+Off by default: without these two settings Helpdock calls no model. With them, `POST <help center>/answer` with `{"question": "..."}` writes a short answer from the passages search found, using Cloudflare Workers AI (`@cf/qwen/qwen2.5-coder-32b-instruct`, the base model of [Wolf](https://inference.flisk.si)). flisk.sh/docs shows it under the passages as "AI answer (beta)". The code is `services/agents/agent/src/ai-answer.ts`.
+
+1. Cloudflare dashboard → **My Profile → API Tokens → Create Token → Custom token**: one permission, **Account · Workers AI · Read**, for the account only. Copy the token.
+2. Render: service `helpdock` → **Environment** → add `HELPDOCK_AI_ACCOUNT` (the account id from the Cloudflare dashboard URL) and `HELPDOCK_AI_TOKEN` (the token). Render redeploys.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `HELPDOCK_AI_REPOS` | `flisk-sh/flisk` | The `owner/repo` help centers that may answer with the model. Others answer 404, so a visitor cannot spend the allowance on any repository |
+| `HELPDOCK_AI_PER_DAY` | `50` | Model calls a day for everyone together (UTC day). The same Cloudflare account pays for inference.flisk.si's 100 a day, so size both together |
+| `HELPDOCK_AI_PER_HOUR` | `10` | Questions per visitor address per hour |
+| `HELPDOCK_AI_MODEL` | `@cf/qwen/qwen2.5-coder-32b-instruct` | The Workers AI model |
+
+What it does to keep answers honest: the model reads only the top six passages, and a line that quotes a command or flag those passages do not contain is dropped before it is shown. When nothing is left, or the docs do not cover the question, the response says so (`answer: null`) and the page keeps the passages. The same question is answered from memory for six hours. Questions are not stored or logged; the log line has counts only.
+
+Check it:
+
+```bash
+curl -s -X POST https://helpdock.flisk.si/flisk-sh/flisk/tree/main/docs/answer -H 'content-type: application/json' -d '{"question":"How do I use Flisk in CI?"}'
+```
+
+`"available":true` with an `answer` means it works. `404` means the two settings are missing or the repository is not in `HELPDOCK_AI_REPOS`; `503` means today's calls are used up.
+
 ## Add or replace docs
 
 Writes need the admin token Render generated: service `helpdock` → **Environment** → `HELPDOCK_ADMIN_TOKEN`.
@@ -57,7 +81,7 @@ Without the token `POST /docs` answers 403 (the image sets `NODE_ENV=production`
 
 ## What is and is not online
 
-- Online: the page, `POST /turn`, `GET /session`, `GET /search`, `POST /mcp` (public, read-only: `search_docs`, `ask_help_center`), and `POST /docs` (admin only).
+- Online: the page, `POST /turn`, `GET /session`, `GET /search`, `POST /mcp` (public, read-only: `search_docs`, `ask_help_center`), `POST <help center>/answer` (only with the Workers AI settings above), and `POST /docs` (admin only).
 - Visitors' own AI: add `https://helpdock.flisk.si/mcp` as a remote MCP server (Streamable HTTP, no auth) in Claude, ChatGPT, Cursor or Codex.
 - Not online: the local tools server (`services/agents/tools`) with `add_doc`. It stays a tool you run with `flisk up`.
 - Limits: 500 characters per question, 60 questions per hour and 300 searches or MCP calls per minute per visitor address, 64 KB request bodies (2 MB for `/docs`), the last 100 messages per session.
