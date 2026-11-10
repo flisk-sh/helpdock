@@ -1,6 +1,7 @@
 # Render Blueprint for helpdock.flisk.si on free plans: render.com → New → Blueprint → flisk-sh/helpdock.
 # Nothing else to sign up for: no database (the agent uses Bun's built-in SQLite when DATABASE_URL is not set) and no
-# AI key (answers quote the docs; visitors take them to their own AI with the buttons or /mcp). See DEPLOY.md.
+# AI key (answers quote the docs; visitors take them to their own AI with the buttons or /mcp). An optional written
+# answer (POST <help center>/answer) needs HELPDOCK_AI_ACCOUNT and HELPDOCK_AI_TOKEN, set in the dashboard. See DEPLOY.md.
 #
 # Free web services sleep after 15 idle minutes (the next visit waits about a minute). The built-in database is in
 # memory: the starter pages load again on every start, while pages added with POST /docs and chat history last only

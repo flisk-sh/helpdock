@@ -10,6 +10,7 @@ describe('parseRepoPath', () => {
     expect(parseRepoPath('/astral-sh/uv')).toEqual({ owner: 'astral-sh', repo: 'uv', rest: '' });
     expect(parseRepoPath('/astral-sh/uv/turn')).toEqual({ owner: 'astral-sh', repo: 'uv', rest: '/turn' });
     expect(parseRepoPath('/vercel/next.js/mcp')).toEqual({ owner: 'vercel', repo: 'next.js', rest: '/mcp' });
+    expect(parseRepoPath('/flisk-sh/flisk/tree/main/docs/answer')).toMatchObject({ owner: 'flisk-sh', repo: 'flisk', scope: 'docs', rest: '/answer' });
   });
 
   it('accepts pasted GitHub paths below a repository', () => {
