@@ -458,14 +458,21 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
   if (sub === 'answer') {
     res.setHeader('access-control-allow-origin', '*');
     res.setHeader('access-control-allow-headers', 'content-type');
-    res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
     if (req.method === 'OPTIONS') {
       res.statusCode = 204;
       return res.end();
     }
-    if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' });
     const repoKey = ws.repo ? `${ws.repo.ref.owner}/${ws.repo.ref.repo}`.toLowerCase() : '';
-    if (!AI || !repoKey || !AI.repos.includes(repoKey)) return sendJson(res, 404, { error: 'AI answers are off for this help center', available: false });
+    const on = Boolean(AI && repoKey && AI.repos.includes(repoKey));
+    // GET says whether this help center answers, so a page shows its button only then. 200 either way: a page that
+    // asks on every load should not log an error in the visitor's console.
+    if (req.method === 'GET') {
+      res.setHeader('cache-control', 'public, max-age=300');
+      return sendJson(res, 200, { available: on && aiDaily.remaining() > 0 });
+    }
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'GET or POST' });
+    if (!AI || !on) return sendJson(res, 404, { error: 'AI answers are off for this help center', available: false });
     const body = await readJson(req);
     const question = redactSecrets(String(body.question ?? '').trim().slice(0, MAX_QUESTION_CHARS));
     if (question.length < 2) return sendJson(res, 400, { error: 'question is required' });
