@@ -38,6 +38,11 @@ describe('MCP endpoint accepts a JSON-only client', () => {
     expect(await res.text()).toContain('serverInfo');
   });
 
+  it('names the server Helpdock MCP for clients that show a title', async () => {
+    const res = await post('application/json');
+    expect(await res.text()).toContain('"title":"Helpdock MCP');
+  });
+
   it('answers a client that sends no accept header', async () => {
     const res = await post(undefined);
     expect(res.status).not.toBe(406);

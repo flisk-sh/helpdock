@@ -20,7 +20,7 @@ export interface McpDeps {
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 
 export function buildMcpServer(deps: McpDeps): McpServer {
-  const server = new McpServer({ name: `helpdock: ${deps.name}`, version: '1.0.0' });
+  const server = new McpServer({ name: `helpdock: ${deps.name}`, title: `Helpdock MCP: ${deps.name}`, version: '1.0.0' });
 
   server.registerTool(
     'search_docs',
