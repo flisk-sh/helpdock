@@ -49,4 +49,11 @@ describe('the question box placeholder', () => {
     expect(openPage).toContain('askAbout(p.title)');
     expect(openPage).toContain('pageTitle(p.title)');
   });
+
+  it('reloads the page list with real titles while an index someone else started is still filling', () => {
+    const boot = script.slice(script.indexOf('function boot'), script.indexOf('function dirOfSource'));
+    expect(boot).toContain("(!s.indexed || s.indexing)");
+    const refresh = script.slice(script.indexOf('function followRefresh'), script.indexOf('function loadAbout'));
+    expect(refresh).toContain('followIndexing');
+  });
 });
