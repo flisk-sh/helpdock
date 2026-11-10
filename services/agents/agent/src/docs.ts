@@ -294,8 +294,25 @@ const STOP_WORDS = new Set(
 // is left to search for.
 export function ftsQuery(question: string): string | null {
   const words = queryWords(question);
-  return words.length > 0 ? words.map((w) => `"${w}"`).join(' OR ') : null;
+  if (words.length === 0) return null;
+  const extra = words.flatMap((w) => SYNONYMS.get(w) ?? []).filter((w) => !words.includes(w));
+  return [...words, ...new Set(extra)].map((w) => `"${w}"`).join(' OR ');
 }
+
+// The words people evaluating a project ask with are often not the words its docs use: "what does it cost" is
+// answered under "Licence", "how do we leave" under "Uninstall". Each group's words are also searched for the others
+// (OR'ed after the question's own words, so a page with the asker's word still ranks by it).
+const SYNONYM_GROUPS = [
+  ['cost', 'costs', 'price', 'pricing', 'paid', 'pay', 'license', 'licence', 'licensing'],
+  ['kubernetes', 'k8s'],
+  ['leave', 'leaving', 'uninstall', 'eject', 'offboard'],
+  ['existing', 'adopt', 'adoption', 'import', 'migrate', 'brownfield'],
+  ['ci', 'pipeline'],
+  ['install', 'installation', 'setup'],
+  ['secure', 'security', 'secrets', 'vulnerability'],
+];
+const SYNONYMS = new Map<string, string[]>();
+for (const group of SYNONYM_GROUPS) for (const w of group) SYNONYMS.set(w, group.filter((o) => o !== w));
 
 /** A question's search words: lower case, without stop words, one-letter words and duplicates. */
 export function queryWords(question: string): string[] {
@@ -318,6 +335,8 @@ export function summarize(body: string, max = 160): string {
   const text =
     blocks(body)
       .filter((b) => !/^(```|~~~|\||<|>|!\[|[-*+] |\d+\. )/.test(b))
+      // A paragraph of links only, or a navigation line ("← Back to the README"), says nothing about the page.
+      .filter((b) => !/^(\[[^\]]*\]\([^)]*\)[\s·|•,/-]*)+$/.test(b) && !/^\[?\s*[←→«»⬅➡↩]/.test(b))
       .map(plain)
       .find((t) => /[a-z]{3}/i.test(t)) ?? '';
   if (text.length <= max) return text;
@@ -352,4 +371,25 @@ export function nameBoost(hit: Pick<SearchHit, 'source' | 'title' | 'section'>, 
   if (words.length === 0) return 1;
   const share = (list: string[]) => (list.length ? list.filter((w) => words.some((q) => sameWord(q, w))).length / list.length : 0);
   return 1 + 1.6 * share(fileWords(hit.source)) + 0.8 * share(queryWords(hit.title)) + 0.6 * share(queryWords(hit.section));
+}
+
+/**
+ * What the project is, in one line, for the top of its help center: the README's first heading when it says more than
+ * the name ("Flisk: local development for multi-service apps"), else nothing. `html` is the rendered README.
+ */
+export function aboutFromReadme(html: string, name: string): string {
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1] ?? '';
+  const text = h1
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = text.split(' ').filter((w) => /[\p{L}\p{N}]/u.test(w));
+  if (words.length < 4 || text.length > 160) return '';
+  if (text.toLowerCase().replace(/[^a-z0-9]/g, '') === name.toLowerCase().replace(/[^a-z0-9]/g, '')) return '';
+  return text;
 }

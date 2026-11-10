@@ -13,6 +13,7 @@ import {
   docPriority,
   fetchRaw,
   fileUrl,
+  headSha,
   listRepoDocs,
   MEMORY_LIMIT_MB,
   type RepoRef,
@@ -72,6 +73,9 @@ export interface RepoEntry {
   notFound: boolean;
   builtAt: number;
   usedAt: number;
+  /** When the branch head was last compared with `sha`, and the comparison in progress (see RepoCache.checkHead). */
+  checkedAt: number;
+  checking: Promise<void> | null;
   index: RepoIndex | null;
   ready: Promise<RepoEntry>;
 }
@@ -84,6 +88,10 @@ export interface RepoCacheOptions {
   maxBuilds: number;
   /** A repository's tree is listed again after this long. */
   ttlMs: number;
+  /** A visited repository's branch head is compared with the listed commit at most this often; a new commit lists it again. */
+  headCheckMs: number;
+  /** The commit at the head of the default branch, or null when it cannot be read. */
+  head: (ref: RepoRef) => Promise<string | null>;
   /** A partial tree (a limit was hit) is listed again after this long, not after ttlMs. */
   partialTtlMs: number;
   /** An index nobody searched for this long is dropped. */
@@ -112,6 +120,8 @@ const DEFAULTS: RepoCacheOptions = {
   maxBytes: 48 * 1024 * 1024,
   maxBuilds: Number(process.env.HELPDOCK_MAX_BUILDS || 2),
   ttlMs: 6 * 60 * 60 * 1000,
+  headCheckMs: Number(process.env.HELPDOCK_HEAD_CHECK_MS || 3 * 60 * 1000),
+  head: headSha,
   partialTtlMs: 10 * 60 * 1000,
   indexIdleMs: Number(process.env.HELPDOCK_INDEX_IDLE_MS || 10 * 60 * 1000),
   list: listRepoDocs,
@@ -193,13 +203,44 @@ export class RepoCache {
     if (existing && (existing.status === 'building' || now - existing.builtAt < ttl)) {
       existing.usedAt = now;
       // A failed listing is retried after a minute, not on every request.
-      if (existing.status !== 'error' || now - existing.builtAt < 60_000) return existing;
+      if (existing.status !== 'error' || now - existing.builtAt < 60_000) {
+        this.checkHead(existing);
+        return existing;
+      }
     }
     if (!canBuild()) {
       if (existing?.status === 'ready') return existing;
       throw new BusyError('limit');
     }
     return this.build(ref, key, existing);
+  }
+
+  /**
+   * Compares the branch head with the listed commit, at most once per headCheckMs per repository, and lists the
+   * repository again when it moved: a push (a new page, a changed .helpdock.json) shows within minutes, not after the
+   * six-hour ttl. Resolves when the comparison is done (and a new listing has started, if one was needed).
+   */
+  checkHead(entry: RepoEntry): Promise<void> {
+    if (entry.checking) return entry.checking;
+    const now = this.opts.now();
+    // A commit we know (not 'HEAD' from the archive fallback), a listing that is done, and not checked lately.
+    if (entry.status !== 'ready' || !entry.sha || !/^[0-9a-f]{40}$/.test(entry.sha) || now - entry.checkedAt < this.opts.headCheckMs) {
+      return Promise.resolve();
+    }
+    entry.checkedAt = now;
+    entry.checking = this.opts
+      .head(entry.ref)
+      .catch(() => null)
+      .then((head) => {
+        if (head && head !== entry.sha && this.entries.get(entry.key) === entry) {
+          console.log(`[repos] ${entry.key}: ${entry.sha?.slice(0, 7)} -> ${head.slice(0, 7)}, listing again`);
+          this.build(entry.ref, entry.key, entry);
+        }
+      })
+      .finally(() => {
+        entry.checking = null;
+      });
+    return entry.checking;
   }
 
   stats() {
@@ -284,6 +325,8 @@ export class RepoCache {
       notFound: false,
       builtAt: now,
       usedAt: now,
+      checkedAt: now,
+      checking: null,
       index: previous?.index ?? null, // a fresh listing keeps the index it replaces; it is searched until dropped
       ready: Promise.resolve(null as unknown as RepoEntry),
     };
@@ -300,6 +343,8 @@ export class RepoCache {
           entry.error = 'This repository has no Markdown documentation.';
           return entry;
         }
+        // A new commit: the old index has the old pages' text, so it goes (the next question builds one at this commit).
+        if (entry.index && previous?.sha && previous.sha !== tree.sha) this.dropIndex(entry);
         Object.assign(entry, {
           status: 'ready' as const,
           sha: tree.sha,

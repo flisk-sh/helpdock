@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
-import { aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
+import { aboutFromReadme, aiPrompt, type Answer, extractiveAnswer, type LinkFor, summarize } from './docs';
 import { renderMarkdown } from '@flisk-sh/md2html';
 import { docPriority, githubAnchor, htmlToMarkdown, normalizeMarkdown, parseRepoPath, type RepoRef, repoBase } from './github';
 import { clientIp, isAdmin, parseProxyMode, RateLimiter, readCorsHeaders, securityHeaders } from './guard';
@@ -12,7 +12,7 @@ import { seedPages } from './seed-docs.generated';
 import type { Checkpoint, DocStore, SessionStore } from './store';
 import { createPostgresStores } from './store-postgres';
 import { createSqliteStores } from './store-sqlite';
-import { ASSET_FILES, llmsTxt, robotsTxt, securityTxt, sitemapXml, webManifest } from './seo';
+import { ASSET_FILES, docsTitle, llmsTxt, robotsTxt, securityTxt, sitemapXml, webManifest } from './seo';
 import { centerPage, centerPageFor, EXAMPLE_REPOS, indexable, landingPage } from './ui';
 import { VIDEO } from './video.generated';
 
@@ -251,7 +251,7 @@ function repoPage(ref: RepoRef): string {
   const path = ref.scope ? `${name}/tree/${encodeURIComponent(ref.branch ?? 'main')}/${ref.scope}/` : `${name}/`;
   return centerPageFor({
     path,
-    title: `${repoLabel(ref)} docs`,
+    title: docsTitle(repoLabel(ref)),
     description: `Search, browse and ask the ${name} docs from GitHub, with answers quoted from the exact page. Also an MCP server for your AI.`.slice(0, 160),
     noindex: !indexable(path),
   });
@@ -344,7 +344,9 @@ function repoStatus(entry: RepoEntry, site: string) {
     kind: 'repo',
     label: repoLabel(entry.ref),
     scope: scope ?? '',
-    status: entry.status === 'ready' && !entry.stores ? 'error' : entry.status,
+    // Listing a new commit while the last one is served: the help center stays usable and reloads its list after.
+    status: entry.status === 'ready' && !entry.stores ? 'error' : entry.status === 'building' && entry.stores ? 'ready' : entry.status,
+    refreshing: entry.status === 'building' && !!entry.stores,
     error: entry.error,
     notFound: entry.notFound,
     github: `https://github.com/${owner}/${repo}${scope ? `/tree/HEAD/${scope}` : ''}`,
@@ -490,7 +492,7 @@ async function serveWorkspace(ws: Workspace, sub: string, req: IncomingMessage, 
 
 // The README, straight from raw.githubusercontent.com (no API, no limit), rendered at once: what a visitor reads while
 // the search index builds. Kept per repository for ten minutes.
-const readmes = new Map<string, { at: number; body: unknown }>();
+const readmes = new Map<string, { at: number; body: { source: string; url: string; html: string } }>();
 async function readme(ref: RepoRef) {
   const key = `${ref.owner}/${ref.repo}/${ref.scope ?? ''}`.toLowerCase();
   const hit = readmes.get(key);
@@ -532,6 +534,14 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
     res.setHeader('cache-control', 'public, max-age=300');
     return sendJson(res, 200, body);
   }
+  // One line on what the project is, from the repository's README (not the folder's), for the top of the help center.
+  if (sub === 'about' && req.method === 'GET') {
+    const wait = readLimit.hit(ip);
+    if (wait) return tooMany(res, wait);
+    const body = await readme({ ...ref, scope: undefined });
+    res.setHeader('cache-control', 'public, max-age=600');
+    return sendJson(res, 200, { about: body ? aboutFromReadme(body.html, ref.repo) : '' });
+  }
   let entry: RepoEntry;
   try {
     entry = repos.get(ref, () => buildLimit.hit(ip) === 0);
@@ -544,7 +554,13 @@ async function serveRepo(ref: RepoRef & { rest: string }, req: IncomingMessage, 
   }
   // The page renders at once and follows the build through /status.
   if (sub === '' && (req.method === 'GET' || req.method === 'HEAD')) return sendPage(req, res, repoPage(ref), centerHeaders);
-  if (sub === 'status') return sendJson(res, 200, repoStatus(entry, siteUrl(req)));
+  if (sub === 'status') {
+    // A visit is when a new commit is looked for (repos.get started it): wait for that briefly, so a visitor who just
+    // pushed sees the new listing start now, not on their next visit.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([repos.checkHead(entry), new Promise((r) => (timer = setTimeout(r, 1500)))]).finally(() => clearTimeout(timer));
+    return sendJson(res, 200, repoStatus(repos.peek(ref) ?? entry, siteUrl(req)));
+  }
   // The page asks for this when the visitor starts typing a question: the index is built meanwhile, not after Ask.
   if (sub === 'warm' && req.method === 'POST') {
     if (readLimit.hit(ip) === 0) void repos.ensureIndex(entry).catch(() => {});

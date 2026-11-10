@@ -42,6 +42,11 @@ export interface PageMeta {
   jsonLd?: object[];
 }
 
+/** A help center's title: "owner/repo docs", but not "owner/repo › docs docs" for a folder already named docs. */
+export function docsTitle(label: string): string {
+  return /(^|[\s/›])(docs?|documentation)$/i.test(label.trim()) ? label : `${label} docs`;
+}
+
 /** `base` is the site address without the trailing slash. */
 export function head(base: string, page: PageMeta): string {
   const url = `${base}/${page.path}`;

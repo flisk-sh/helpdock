@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { scriptHash, securityHeaders } from '../src/guard';
-import { ASSET_FILES, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
+import { ASSET_FILES, docsTitle, head, ICONS, robotsTxt, SITE, sitemapXml } from '../src/seo';
 import { centerPage, centerPageFor, indexable, landingPage } from '../src/ui';
 import { VIDEO } from '../src/video.generated';
 
@@ -86,5 +86,14 @@ describe('DevHunt badge', () => {
     const csp = securityHeaders(landingPage)['content-security-policy'];
     expect(csp).toContain("img-src 'self' data: https:");
     expect(csp).not.toContain('devhunt');
+  });
+});
+
+describe('docsTitle', () => {
+  it('adds "docs" unless the folder is already called that', () => {
+    expect(docsTitle('vercel/next.js')).toBe('vercel/next.js docs');
+    expect(docsTitle('flisk-sh/flisk › docs')).toBe('flisk-sh/flisk › docs');
+    expect(docsTitle('hashicorp/terraform › website/docs')).toBe('hashicorp/terraform › website/docs');
+    expect(docsTitle('o/r › guides')).toBe('o/r › guides docs');
   });
 });
