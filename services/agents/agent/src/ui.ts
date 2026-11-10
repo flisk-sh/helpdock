@@ -506,7 +506,10 @@ function followRefresh(was) {
     api('status').then(function (s) {
       if (s.refreshing) return followRefresh(was);
       info = s; setStatus(shaText(s));
-      if (s.sha !== was) loadPages();
+      if (s.sha === was) return;
+      loadPages();
+      // The new commit's pages have no index yet: build one, and load the list again with their titles.
+      if (!s.indexed) { warmed = false; warm(); setTimeout(followIndexing, 1500); }
     }).catch(function () { followRefresh(was); });
   }, 2000);
 }
@@ -562,7 +565,8 @@ function boot() {
     if (s.refreshing) followRefresh(s.sha);
     // Without a search index the page list has file names for titles ("DESIGN", "SKILL"): build it now, and load the
     // list again with the pages' own titles when it is done.
-    if (s.kind === 'repo' && !s.indexed) { warm(); setTimeout(followIndexing, 1500); }
+    // An index still filling (someone else started it, or the instance pre-builds after a start) also brings titles.
+    if (s.kind === 'repo' && (!s.indexed || s.indexing)) { if (!s.indexed) warm(); setTimeout(followIndexing, 1500); }
 
     if (location.hash === '#mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
     else route();
