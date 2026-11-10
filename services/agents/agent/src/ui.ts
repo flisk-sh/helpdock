@@ -54,7 +54,7 @@ code, pre, .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, mo
 .wrap { max-width:1080px; margin:0 auto; padding:0 20px; }
 .nav { display:flex; align-items:center; justify-content:space-between; gap:12px; height:64px; }
 .brand { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em; color:var(--ink); text-decoration:none; }
-.mark { width:26px; height:26px; border-radius:8px; background:var(--accent); display:grid; place-items:center; color:var(--accent-ink); font-size:15px; font-weight:800; }
+.brand img { display:block; flex:none; }
 .navlinks { display:flex; gap:18px; font-size:15px; }
 .navlinks a { color:var(--muted); text-decoration:none; }
 .navlinks a:hover { color:var(--ink); }
@@ -303,7 +303,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
 <body>
 <div class="stage"><div class="wrap">
   <nav class="nav">
-    <a class="brand" href="/"><span class="mark">H</span>Helpdock</a>
+    <a class="brand" href="/"><img src="/icon.svg" alt="" width="26" height="26">Helpdock</a>
     <div class="navlinks"><a href="#how">How it works</a><a href="https://github.com/flisk-sh/helpdock">GitHub</a></div>
   </nav>
   <section class="hero">
@@ -971,7 +971,7 @@ ${head(SITE_BASE, meta)}
 </head>
 <body>
 <div class="top stage"><div class="wrap">
-  <div class="crumb"><a class="brand" href="/"><span class="mark">H</span><span class="hide-sm">Helpdock</span></a><span class="sep">/</span><img class="avatar" id="avatar" alt="" width="22" height="22" hidden><a class="label mono" id="label" target="_blank" rel="noopener">…</a><span class="pill" id="pill">Loading…</span></div>
+  <div class="crumb"><a class="brand" href="/"><img src="/icon.svg" alt="" width="26" height="26"><span class="hide-sm">Helpdock</span></a><span class="sep">/</span><img class="avatar" id="avatar" alt="" width="22" height="22" hidden><a class="label mono" id="label" target="_blank" rel="noopener">…</a><span class="pill" id="pill">Loading…</span></div>
   <button class="ghost mobile-pages" id="pagesbtn" type="button" aria-expanded="false" aria-controls="side">Pages</button>
   <button class="ghost" id="mcpbtn" type="button">Use in your AI</button>
 </div></div>

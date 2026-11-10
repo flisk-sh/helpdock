@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { centerPage } from '../src/ui';
+import { centerPage, landingPage } from '../src/ui';
 
 // The help center's own script, as the browser runs it: the typewriter the question box uses.
 const script = centerPage.slice(centerPage.indexOf('<script>') + 8, centerPage.lastIndexOf('</script>'));
@@ -55,5 +55,15 @@ describe('the question box placeholder', () => {
     expect(boot).toContain("(!s.indexed || s.indexing)");
     const refresh = script.slice(script.indexOf('function followRefresh'), script.indexOf('function loadAbout'));
     expect(refresh).toContain('followIndexing');
+  });
+});
+
+describe('the header brand', () => {
+  it('shows the canonical Helpdock logo (/icon.svg) on the landing page and the help center, not a letter tile', () => {
+    for (const page of [landingPage, centerPage]) {
+      expect(page).toContain('<a class="brand" href="/"><img src="/icon.svg" alt="" width="26" height="26">');
+      expect(page).not.toContain('class="mark"');
+      expect(page).not.toContain('.mark {');
+    }
   });
 });
