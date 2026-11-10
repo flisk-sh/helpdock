@@ -111,14 +111,17 @@ footer.foot .badge img { display:block; max-width:100%; height:auto; }
 const typewriterJs = String.raw`
 function typewriter(input, phrases, prefix) {
   prefix = prefix || '';
-  if (!phrases.length) return;
+  // set(list, fixed): new phrases; fixed shows the first one still (a page being read is named, not cycled).
+  var control = { set: function (list, fixed) { phrases = list; i = 0; n = 0; deleting = false; frozen = !!fixed; clearTimeout(timer); timer = null; rest(); if (!frozen && !still) timer = setTimeout(tick, 500); } };
+  if (!phrases.length) return control;
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (still) { input.placeholder = prefix + phrases[0]; return; }
+  var frozen = false;
   var i = 0, n = 0, deleting = false, timer = null;
+  if (still) { input.placeholder = prefix + phrases[0]; return control; }
   function idle() { return document.activeElement !== input && !input.value; }
-  function rest() { input.placeholder = prefix + phrases[i % phrases.length]; }
+  function rest() { if (phrases.length) input.placeholder = prefix + phrases[i % phrases.length]; }
   function tick() {
-    if (!idle()) { timer = null; rest(); return; }
+    if (!idle() || frozen) { timer = null; rest(); return; }
     var word = phrases[i % phrases.length];
     n += deleting ? -1 : 1;
     input.placeholder = prefix + word.slice(0, n) + (deleting || n < word.length ? '|' : '');
@@ -128,8 +131,9 @@ function typewriter(input, phrases, prefix) {
     timer = setTimeout(tick, wait);
   }
   input.addEventListener('focus', function () { clearTimeout(timer); timer = null; rest(); });
-  input.addEventListener('blur', function () { if (!timer && !input.value) { n = 0; deleting = false; timer = setTimeout(tick, 600); } });
+  input.addEventListener('blur', function () { if (!timer && !input.value && !frozen) { n = 0; deleting = false; timer = setTimeout(tick, 600); } });
   timer = setTimeout(tick, 500);
+  return control;
 }
 `;
 
@@ -366,7 +370,7 @@ main.main { padding:28px 0 60px; min-width:0; }
 .main h1 { font-size:clamp(26px, 3.6vw, 36px); letter-spacing:-.025em; line-height:1.15; margin:0 0 6px; overflow-wrap:anywhere; }
 .main .sub { color:var(--muted); margin:0 0 18px; }
 .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; }
-#ask.compact h1, #ask.compact .sub, #ask.compact .chips { display:none; }
+#ask.compact h1, #ask.compact .sub, #ask.compact .about, #ask.compact .chips { display:none; }
 /* On every view but the home one the question box stays under the header while the page scrolls. */
 #ask.compact { position:sticky; top:58px; z-index:4; background:var(--bg); padding:10px 0 12px; margin:0 0 14px; }
 .chip { font:inherit; font-size:14px; padding:6px 12px; border-radius:999px; background:var(--tint); color:var(--accent); border:0; cursor:pointer; }
@@ -393,6 +397,22 @@ main.main { padding:28px 0 60px; min-width:0; }
 .article h3 { font-size:18px; margin:26px 0 8px; overflow-wrap:anywhere; scroll-margin-top:150px; }
 .article .md { font-size:15.5px; }
 .back { font-size:14px; text-decoration:none; }
+.article .gh { margin:10px 0 14px; }
+.article h3 .anchor { margin-left:8px; color:var(--muted); text-decoration:none; font-weight:400; opacity:0; transition:opacity .15s; }
+.article h3:hover .anchor, .article h3 .anchor:focus { opacity:1; }
+@media (hover: none) { .article h3 .anchor { opacity:.5; } }
+.toc { border:1px solid var(--line); border-radius:12px; padding:8px 14px; margin:4px 0 10px; font-size:14px; }
+.toc > summary { cursor:pointer; font-weight:600; color:var(--muted); }
+.toc ol { margin:8px 0 4px; padding-left:1.3em; columns:2 240px; column-gap:28px; }
+.toc li { margin:0 0 4px; break-inside:avoid; }
+.toc a { text-decoration:none; }
+.about { font-size:18px; color:var(--ink); margin:2px 0 8px; max-width:60ch; }
+.codewrap { position:relative; }
+.codewrap .copy { position:absolute; top:6px; right:6px; padding:2px 10px; font-size:12px; opacity:.85; }
+.codewrap pre { padding-right:70px; }
+/* Table cells wrap at spaces, so a narrow screen scrolls the table instead of breaking words letter by letter. */
+.md th, .md td { overflow-wrap:normal; word-break:normal; }
+.md td code { overflow-wrap:anywhere; }
 .warn { color:var(--warn); }
 .mobile-pages { display:none; }
 details.fold > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; padding:6px 8px; border-radius:7px; color:var(--ink); }
@@ -431,7 +451,13 @@ details.fold.more > summary { color:var(--muted); }
 const centerJs = String.raw`
 var base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 var $ = function (id) { return document.getElementById(id); };
-var info = null, pages = [], groups = [], current = null, readmeShown = false, typing = false;
+var info = null, pages = [], groups = [], current = null, readmeShown = false, typer = null, homePhrases = [], homeTitle = document.title;
+// The question box names what is being read: the open page's title, else this repository's start pages as examples.
+function askAbout(title) {
+  if (title) { if (typer) typer.set([title], true); else $('q').placeholder = 'Ask about ' + title; }
+  else if (typer) typer.set(homePhrases);
+}
+function pageTitle(text) { document.title = text ? text + ' · ' + homeTitle : homeTitle; }
 // While the index builds, the README comes straight from GitHub so there is something to read at once.
 // Search is open while the last pages are added: show the count, and reload the page list once it is complete.
 function followIndexing() {
@@ -440,7 +466,7 @@ function followIndexing() {
     api('status').then(function (s) {
       info = s;
       if (s.indexing || (warmed && !s.indexed)) return followIndexing();
-      setStatus((s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''));
+      setStatus(shaText(s));
       loadPages();
     }).catch(function () { setTimeout(followIndexing, 3000); });
   }, 2000);
@@ -474,12 +500,27 @@ function copy(text, btn) {
 }
 function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function dirOf(url) { if (!url) return null; var u = url.split('#')[0]; return u.slice(0, u.lastIndexOf('/') + 1); }
+function shaText(s) { return (s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''); }
+function followRefresh(was) {
+  setTimeout(function () {
+    api('status').then(function (s) {
+      if (s.refreshing) return followRefresh(was);
+      info = s; setStatus(shaText(s));
+      if (s.sha !== was) loadPages();
+    }).catch(function () { followRefresh(was); });
+  }, 2000);
+}
+// One line on what the project is (its README's heading), over the question box.
+function loadAbout() {
+  api('about').then(function (r) { if (r.about) { $('about').textContent = r.about; $('about').hidden = false; } }).catch(function () {});
+}
 function setStatus(text, warn) { var p = $('pill'); p.textContent = text; p.className = 'pill' + (warn ? ' warn' : ''); }
 
 function boot() {
   api('status').then(function (s) {
     info = s;
-    document.title = s.label + ' · Helpdock';
+    homeTitle = s.label + ' · Helpdock';
+    if (!current) document.title = homeTitle;
     $('label').textContent = s.label;
     if (s.github) $('label').href = s.github; else $('label').removeAttribute('href');
     if (s.kind === 'repo') { var av = $('avatar'); av.src = 'https://github.com/' + s.label.split('/')[0] + '.png?size=64'; av.hidden = false; }
@@ -506,7 +547,7 @@ function boot() {
       $('fatalmsg').textContent = s.error || 'This repository could not be read.';
       return;
     }
-    setStatus((s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''));
+    setStatus(shaText(s));
     if (s.truncated) $('pill').title = 'The largest repositories are indexed up to ' + s.files + ' pages, docs first.';
     $('mcpurl').textContent = s.mcpUrl;
     var folder = s.label.indexOf(' › ') > 0 ? s.label.split(' › ')[1].split('/')[0] : '';
@@ -516,6 +557,9 @@ function boot() {
     $('mcpjson').textContent = JSON.stringify({ mcpServers: servers }, null, 2);
     $('ask').hidden = false;
     loadPages();
+    if (s.kind === 'repo') loadAbout();
+    // A new commit is being listed (the last one is served meanwhile): load its page list when it is in.
+    if (s.refreshing) followRefresh(s.sha);
     // Without a search index the page list has file names for titles ("DESIGN", "SKILL"): build it now, and load the
     // list again with the pages' own titles when it is done.
     if (s.kind === 'repo' && !s.indexed) { warm(); setTimeout(followIndexing, 1500); }
@@ -649,6 +693,7 @@ function renderTree(list, box, label) {
 }
 function pagesUnder(nodes) { var out = []; (function walk(ns) { ns.forEach(function (n) { out = out.concat(n.pages); walk(Object.keys(n.kids).map(function (k) { return n.kids[k]; })); }); })(nodes); return out; }
 var openFirst = {};
+var currentTitle = '';
 function renderSide(filter) {
   var box = $('tree'); box.textContent = '';
   var f = filter.trim().toLowerCase();
@@ -679,7 +724,7 @@ function renderSide(filter) {
 }
 function loadPages() {
   // The list is cached for a minute; once an index brings the pages' own titles it is a different list (?s=sections).
-  api('pages' + (info && info.sections ? '?s=' + info.sections : '')).then(function (b) { pages = b.pages; groups = b.groups || []; renderSide($('filter').value); renderStart(); });
+  api('pages?v=' + encodeURIComponent(((info && info.sha) || '').slice(0, 12) + '-' + ((info && info.sections) || 0))).then(function (b) { pages = b.pages; groups = b.groups || []; renderSide($('filter').value); renderStart(); });
 }
 
 // "Start here": the pages a newcomer reads first, as cards with their lead sentence. Chosen by the file's own name
@@ -727,7 +772,9 @@ function renderStart() {
   });
   box.append(grid);
   // The question box types this repository's own topics as examples.
-  if (!typing) { typing = true; typewriter($('q'), phrases, 'Ask about '); }
+  homePhrases = phrases;
+  if (!typer) { typer = typewriter($('q'), phrases, 'Ask about '); if (current && currentTitle) typer.set([currentTitle], true); }
+  else if (!current) typer.set(phrases);
   // Suggested questions: the same topics, phrased as one.
   var chips = $('chips'); chips.textContent = '';
   picks.slice(0, 4).forEach(function (p, n) {
@@ -754,6 +801,8 @@ function ask(question) {
   current = null; renderSide($('filter').value);
   history.replaceState(null, '', '#q=' + encodeURIComponent(question));
   $('q').value = question;
+  pageTitle(question); currentTitle = ''; askAbout('');
+  window.scrollTo(0, 0);
   var box = $('answers'); box.textContent = '';
   box.append(el('div', 'q', question));
   var first = info && info.kind === 'repo' && !info.indexed;
@@ -777,6 +826,7 @@ function ask(question) {
         var body = el('div', 'md'); body.innerHTML = s.html;
         card.append(head, body); box.append(card);
       });
+      addCopyButtons(box);
       box.append(aiRow(b.prompt));
     })
     .catch(function (e) {
@@ -794,7 +844,11 @@ function route() {
   var hash = decodeURIComponent(location.hash.slice(1));
   if (hash.indexOf('page=') === 0) { var rest = hash.slice(5), at = rest.indexOf('#'); openPage(at < 0 ? rest : rest.slice(0, at), at < 0 ? undefined : rest.slice(at + 1), true); }
   else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
-  else if (!hash && current) { current = null; showView('answers', true); $('answers').textContent = ''; renderSide($('filter').value); }
+  else if (!hash) goHome();
+}
+function goHome() {
+  current = null; currentTitle = ''; showView('answers', true); $('answers').textContent = ''; renderSide($('filter').value);
+  pageTitle(''); askAbout('');
 }
 window.addEventListener('popstate', function () { if (info) route(); });
 // Links between pages (rewritten by the server to #page=… with data-page) open here, not on GitHub; a heading anchor
@@ -812,7 +866,10 @@ document.addEventListener('click', function (e) {
 
 function openPage(source, section, fromAddress) {
   showView('article');
+  if (current !== source) currentTitle = '';
   current = source; renderSide($('filter').value);
+  var known = pages.filter(function (p) { return p.source === source; })[0];
+  if (known) { currentTitle = known.title; pageTitle(known.title); askAbout(known.title); }
   // A new history entry, so Back returns to the page or answers before; opening from the address replaces it.
   var want = '#page=' + encodeURIComponent(section ? source + '#' + section : source);
   if (location.hash !== want) { if (fromAddress) history.replaceState(null, '', want); else history.pushState(null, '', want); }
@@ -820,19 +877,48 @@ function openPage(source, section, fromAddress) {
   var wait = el('div', 'loading'); wait.append(el('div', 'spin'), el('span', null, 'Opening…')); box.append(wait);
   api('page?source=' + encodeURIComponent(source)).then(function (p) {
     box.textContent = '';
-    var back = el('a', 'back', '← Ask a question'); back.href = '#'; back.onclick = function (e) { e.preventDefault(); showView('answers', true); $('answers').textContent = ''; history.replaceState(null, '', location.pathname); $('q').focus(); };
+    if (current !== source) return; // another page was opened meanwhile
+    var back = el('a', 'back', '← Ask a question'); back.href = '#'; back.onclick = function (e) { e.preventDefault(); history.pushState(null, '', location.pathname); goHome(); $('q').focus(); };
     box.append(back, el('h2', null, p.title), el('div', 'p mono muted', source));
-    if (p.url) { var gh = el('a', 'ghost', 'Open on GitHub ↗'); gh.href = p.url; gh.target = '_blank'; gh.rel = 'noopener'; gh.style.marginTop = '10px'; box.append(gh); }
+    currentTitle = p.title; pageTitle(p.title); askAbout(p.title);
+    if (p.url) { var gh = el('a', 'ghost gh', 'Open on GitHub ↗'); gh.href = p.url; gh.target = '_blank'; gh.rel = 'noopener'; box.append(gh); }
+    // A long page gets its headings as a list to jump to.
+    var heads = p.sections.filter(function (s) { return s.section; });
+    if (heads.length >= 4) {
+      var toc = el('details', 'toc'); toc.open = window.innerWidth >= 860;
+      toc.append(el('summary', null, 'On this page (' + heads.length + ')'));
+      var ol = el('ol');
+      heads.forEach(function (s) { var li = el('li'); var a = el('a', null, s.section); a.href = '#' + slug(s.section); li.append(a); ol.append(li); });
+      toc.append(ol); box.append(toc);
+    }
     var target = null;
     p.sections.forEach(function (s) {
-      if (s.section) { var h = el('h3', null, s.section); h.id = 'h-' + slug(s.section); box.append(h); if (section && (s.section === section || slug(s.section) === section)) target = h; }
+      if (s.section) {
+        var h = el('h3', null, s.section); h.id = 'h-' + slug(s.section);
+        // The heading's own link: the address of this page at this heading, to copy and share.
+        var link = el('a', 'anchor', '#'); link.href = '#page=' + encodeURIComponent(source + '#' + slug(s.section)); link.setAttribute('aria-label', 'Link to ' + s.section);
+        link.onclick = function (e) { e.preventDefault(); history.replaceState(null, '', link.getAttribute('href')); h.scrollIntoView({ block: 'start' }); };
+        h.append(link); box.append(h);
+        if (section && (s.section === section || slug(s.section) === section)) target = h;
+      }
       var md = el('div', 'md'); md.innerHTML = s.html; box.append(md);
     });
+    addCopyButtons(box);
     if (target) target.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
-    if (window.innerWidth < 860) $('side').classList.remove('open');
+    if (window.innerWidth < 860) { $('side').classList.remove('open'); $('pagesbtn').textContent = 'Pages'; $('pagesbtn').setAttribute('aria-expanded', 'false'); }
   }).catch(function (e) { box.textContent = ''; box.append(el('div', 'none', 'Could not open this page: ' + e.message)); });
 }
 
+// A Copy button on each code block.
+function addCopyButtons(box) {
+  box.querySelectorAll('.md pre').forEach(function (pre) {
+    if (pre.parentNode.classList && pre.parentNode.classList.contains('codewrap')) return;
+    var wrap = el('div', 'codewrap'); pre.parentNode.insertBefore(wrap, pre); wrap.append(pre);
+    var b = el('button', 'ghost copy', 'Copy'); b.type = 'button'; b.setAttribute('aria-label', 'Copy code');
+    b.onclick = function () { copy(pre.innerText.replace(/\n$/, ''), b); };
+    wrap.append(b);
+  });
+}
 function showView(which, home) { $('answers').hidden = which !== 'answers'; $('article').hidden = which !== 'article'; $('ask').hidden = false; $('ask').classList.toggle('compact', !home); $('start').hidden = !home; }
 
 $('f').onsubmit = function (e) { e.preventDefault(); ask($('q').value); };
@@ -851,6 +937,8 @@ $('pagesbtn').onclick = function () {
   // Over the page, from the bottom of the header (the site bar above it may still be on screen).
   side.style.top = Math.max(0, document.querySelector('.top').getBoundingClientRect().bottom) + 'px';
   side.classList.toggle('open');
+  $('pagesbtn').textContent = side.classList.contains('open') ? 'Close' : 'Pages';
+  $('pagesbtn').setAttribute('aria-expanded', side.classList.contains('open') ? 'true' : 'false');
   var on = side.querySelector('a.pg.on'); if (on) on.scrollIntoView({ block: 'center' });
 };
 boot();
@@ -869,7 +957,7 @@ ${head(SITE_BASE, meta)}
 <body>
 <div class="top stage"><div class="wrap">
   <div class="crumb"><a class="brand" href="/"><span class="mark">H</span><span class="hide-sm">Helpdock</span></a><span class="sep">/</span><img class="avatar" id="avatar" alt="" width="22" height="22" hidden><a class="label mono" id="label" target="_blank" rel="noopener">…</a><span class="pill" id="pill">Loading…</span></div>
-  <button class="ghost mobile-pages" id="pagesbtn" type="button">Pages</button>
+  <button class="ghost mobile-pages" id="pagesbtn" type="button" aria-expanded="false" aria-controls="side">Pages</button>
   <button class="ghost" id="mcpbtn" type="button">Use in your AI</button>
 </div></div>
 <div class="layout">
@@ -886,6 +974,7 @@ ${head(SITE_BASE, meta)}
     <div id="fatal" hidden><h1>Can't open this one</h1><p class="sub" id="fatalmsg"></p><a class="ghost" href="/">Try another repository</a></div>
     <section id="ask" hidden>
       <h1 id="title">Ask the docs</h1>
+      <p class="about" id="about" hidden></p>
       <p class="sub">Answers are passages quoted from the docs, linked to the exact page. Hand them to your own AI for a written answer.</p>
       <form id="f" class="row"><input class="field" id="q" autocomplete="off" placeholder="Ask in your own words, e.g. how do I install it?" aria-label="Question" maxlength="500"><button class="btn" id="go">Ask</button></form>
       <div class="chips" id="chips"></div>

@@ -90,7 +90,7 @@ const RESERVED = new Set(['health', 'ready', 'turn', 'search', 'docs', 'session'
  */
 // The routes below a help center; a scope folder named like one of them is read as the route (not "docs": that is a
 // route of the deployment's own docs only, and many repositories have a docs folder).
-const ROUTES = new Set(['status', 'pages', 'page', 'lead', 'search', 'turn', 'session', 'mcp', 'readme', 'warm']);
+const ROUTES = new Set(['status', 'pages', 'page', 'lead', 'search', 'turn', 'session', 'mcp', 'readme', 'warm', 'about']);
 
 export function parseRepoPath(pathname: string): (RepoRef & { rest: string }) | null {
   const m = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);
@@ -695,6 +695,23 @@ export async function listRepoDocs(ref: RepoRef, limits: ReadLimits = DEFAULT_LI
     return { sha, paths: chosen.map((path) => ({ path, size: sizes.get(path) ?? 0 })), truncated: candidates > chosen.length };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * The commit at the head of the default branch, from `git ls-remote` (one small request to GitHub's git server, not
+ * the REST API, so it does not count against the 60 calls an hour). Null when it cannot be read.
+ */
+export async function headSha(ref: RepoRef, timeoutMs = 10_000): Promise<string | null> {
+  try {
+    const { stdout } = await run('git', ['ls-remote', `https://github.com/${ref.owner}/${ref.repo}.git`, 'HEAD'], {
+      timeout: timeoutMs,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'true', GCM_INTERACTIVE: 'never' },
+    });
+    const sha = stdout.split(/\s/)[0];
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
   }
 }
 

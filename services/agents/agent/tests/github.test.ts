@@ -14,6 +14,8 @@ describe('parseRepoPath', () => {
 
   it('accepts pasted GitHub paths below a repository', () => {
     expect(parseRepoPath('/astral-sh/uv/tree/main/docs')?.rest).toBe('');
+    // Every route the help center page calls works below a folder too (the folder is not "docs/about").
+    expect(parseRepoPath('/flisk-sh/flisk/tree/main/docs/about')).toMatchObject({ rest: '/about', scope: 'docs' });
     expect(parseRepoPath('/astral-sh/uv/blob/main/README.md')?.rest).toBe('');
     expect(parseRepoPath('/astral-sh/uv.git')?.repo).toBe('uv');
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, fileWords, nameBoost, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
+import { aboutFromReadme, aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, fileWords, nameBoost, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -106,6 +106,30 @@ describe('ftsQuery', () => {
     expect(ftsQuery('how do I?')).toBeNull();
     expect(ftsQuery('   ')).toBeNull();
   });
+
+  it("also searches the docs' words for an evaluator's question, after the question's own", () => {
+    const cost = ftsQuery('what does it cost') ?? '';
+    expect(cost.startsWith('"cost" OR ')).toBe(true);
+    expect(cost).toContain('"licence"');
+    expect(cost).toContain('"license"');
+    expect(ftsQuery('how do we leave')).toContain('"uninstall"');
+    expect(ftsQuery('do we need k8s')).toContain('"kubernetes"');
+  });
+});
+
+describe('aboutFromReadme', () => {
+  it("is the README's heading when it says what the project is", () => {
+    expect(aboutFromReadme('<div><img src="x.svg"><h1 id="f">Flisk: local development for multi-service apps, started with one command</h1><p>x</p></div>', 'flisk')).toBe(
+      'Flisk: local development for multi-service apps, started with one command',
+    );
+    expect(aboutFromReadme('<h1>Tom &amp; Jerry <code>kit</code> for your tests</h1>', 'tj')).toBe('Tom & Jerry kit for your tests');
+  });
+
+  it('is empty when the heading is only the name, too short, or missing', () => {
+    expect(aboutFromReadme('<h1>next.js</h1>', 'next.js')).toBe('');
+    expect(aboutFromReadme('<h1>The Next.js</h1>', 'next.js')).toBe('');
+    expect(aboutFromReadme('<p>No heading here at all, just words.</p>', 'x')).toBe('');
+  });
 });
 
 describe('cleanHeading', () => {
@@ -189,6 +213,9 @@ describe('summarize', () => {
     expect(summarize('One two three. Four five six seven eight nine ten.', 20)).toBe('One two three.');
     expect(summarize('Alpha beta gamma delta epsilon zeta', 20)).toBe('Alpha beta gamma…');
     expect(summarize('| a | b |\n|---|---|')).toBe('');
+    // A navigation line is not what the page is about.
+    expect(summarize('[← Back to the README](../../README.md#quick-start)\n\nSee a whole app run on your computer.')).toBe('See a whole app run on your computer.');
+    expect(summarize('[Install](install.md) · [Configure](config.md)\n\nThe real lead.')).toBe('The real lead.');
   });
 
   it('skips a paragraph of linked badges for the first one with words', () => {
