@@ -311,6 +311,7 @@ const SYNONYM_GROUPS = [
   ['existing', 'adopt', 'adoption', 'import', 'migrate', 'brownfield'],
   ['ci', 'pipeline'],
   ['install', 'installation', 'setup'],
+  ['repo', 'repos', 'repository', 'repositories'],
   ['secure', 'security', 'secrets', 'vulnerability'],
 ];
 const SYNONYMS = new Map<string, string[]>();
@@ -366,15 +367,19 @@ export function fileWords(source: string): string[] {
 /**
  * How much a page's name says it is about the question, as a multiplier for its rank: the share of its file-name
  * words the question contains weighs most (middleware.mdx for "how do I add middleware"), then its title's, then the
- * section heading's. 1 when nothing matches, up to 4 when the file, title and section all match.
+ * section heading's. The page's intro, the text before its first subheading, says what the whole page is
+ * for, so on a page named after the question it counts once more (ci.md's intro for "how do I use it in CI").
+ * 1 when nothing matches.
  */
 export function nameBoost(hit: Pick<SearchHit, 'source' | 'title' | 'section'>, question: string): number {
   const words = queryWords(question);
   if (words.length === 0) return 1;
   const share = (list: string[]) => (list.length ? list.filter((w) => words.some((q) => sameWord(q, w))).length / list.length : 0);
+  const file = share(fileWords(hit.source));
   return (
     1 +
-    1.6 * share(fileWords(hit.source)) +
+    1.6 * file +
+    (hit.section === '' ? 0.8 * file : 0) +
     0.8 * share(queryWords(hit.title)) +
     0.6 * share(queryWords(hit.section)) +
     3 * headingAsks(hit.section, question)

@@ -114,6 +114,7 @@ describe('ftsQuery', () => {
     expect(cost).toContain('"license"');
     expect(ftsQuery('how do we leave')).toContain('"uninstall"');
     expect(ftsQuery('do we need k8s')).toContain('"kubernetes"');
+    expect(ftsQuery('add it to an existing repo')).toContain('"repository"');
   });
 });
 
@@ -270,6 +271,15 @@ describe('nameBoost', () => {
     expect(headingAsks('Migration between Flisk and Plain Tilt', 'difference between flisk up and tilt up')).toBe(0);
     expect(headingAsks('Middleware', 'How do I add middleware?')).toBe(0);
     expect(headingAsks('', 'anything')).toBe(0);
+  });
+
+  it("ranks the intro of a page named after the question above that page's other sections", () => {
+    const ci = 'How do I use Flisk in CI?';
+    expect(nameBoost(page('docs/ci.md', 'Running Flisk in CI (GitHub Actions)'), ci)).toBeGreaterThan(
+      nameBoost(page('docs/ci.md', 'Running Flisk in CI (GitHub Actions)', 'Action versions and permissions'), ci),
+    );
+    // An intro on a page named after something else gets nothing extra.
+    expect(nameBoost(page('docs/a.md', 'Alpha'), ci)).toBe(nameBoost(page('docs/a.md', 'Alpha', 'Beta'), ci));
   });
 
   it('is 1 when nothing in the name matches', () => {
