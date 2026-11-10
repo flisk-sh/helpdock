@@ -49,7 +49,7 @@ const MAX_ENTRIES = 200;
 const MAX_GROUPS = 30;
 const MAX_ENTRY_CHARS = 300;
 const MAX_START = 12;
-const MAX_QUESTIONS = 12;
+const MAX_QUESTIONS = 60;
 const MAX_QUESTION_CHARS = 120;
 
 const strings = (value: unknown): string[] =>

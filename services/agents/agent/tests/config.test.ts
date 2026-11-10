@@ -96,9 +96,9 @@ describe('questions in .helpdock.json', () => {
     expect(c?.questions).toEqual(['Do we need Kubernetes?', 'How do I use it in CI?']);
   });
 
-  it('keeps at most twelve', () => {
-    const c = parseConfig(JSON.stringify({ questions: Array.from({ length: 20 }, (_, i) => `Question ${i}?`) }));
-    expect(c?.questions).toHaveLength(12);
+  it('keeps at most sixty', () => {
+    const c = parseConfig(JSON.stringify({ questions: Array.from({ length: 80 }, (_, i) => `Question ${i}?`) }));
+    expect(c?.questions).toHaveLength(60);
   });
 
   it('passes them through applyConfig, and none without a config', () => {

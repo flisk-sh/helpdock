@@ -63,7 +63,7 @@ To choose the pages and their order yourself, add a `.helpdock.json` at the top 
 | `exclude` | Globs of pages to leave out of the page list, the search index and the MCP server. |
 | `groups` | The sections of the page list, in this order. A page goes to the first group with a glob that matches it, and is placed by the first glob it matches, then by path. Pages in no group come after the groups, under *More*. |
 | `start` | The *Start here* cards, in order (up to 12; six are shown). Without it, the first group's first six pages. |
-| `questions` | The questions offered under the question box and typed as its placeholder, in order (up to 12 of at most 120 characters; eight are shown). Without it, the *Start here* pages' titles. |
+| `questions` | The questions offered under the question box and typed as its placeholder, in order (up to 60 of at most 120 characters; eight are shown, the rest behind "More questions", and all are suggested while typing). Without it, the *Start here* pages' titles. |
 
 Every key is optional. Paths and globs are relative to that folder: `*` matches within one folder, `**` across folders, and a folder name means everything in it. Helpdock reads the file each time it lists the repository (on the first visit after a push, checked at most every three minutes, or after a restart); a missing or broken file means the defaults above.
 

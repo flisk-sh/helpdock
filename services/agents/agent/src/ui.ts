@@ -374,6 +374,7 @@ main.main { padding:28px 0 60px; min-width:0; }
 /* On every view but the home one the question box stays under the header while the page scrolls. */
 #ask.compact { position:sticky; top:58px; z-index:4; background:var(--bg); padding:10px 0 12px; margin:0 0 14px; }
 .chip { font:inherit; font-size:14px; padding:6px 12px; border-radius:999px; background:var(--tint); color:var(--accent); border:0; cursor:pointer; }
+.chip.more { background:transparent; box-shadow:inset 0 0 0 1px var(--accent); }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin:0 0 18px; }
 .panel h3 { margin:0 0 8px; font-size:15px; }
 .panel pre { background:var(--code); border-radius:9px; padding:9px 12px; font-size:12.5px; margin:6px 0 10px; white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -777,16 +778,25 @@ function renderStart() {
   box.append(grid);
   // The question box types the repository's own questions (.helpdock.json "questions"), else its start topics.
   var own = questions.length > 0;
-  homePhrases = own ? questions.map(function (q) { return 'Ask: ' + q; }) : phrases.map(function (t) { return 'Ask about ' + t; });
+  homePhrases = own ? questions.slice(0, 12).map(function (q) { return 'Ask: ' + q; }) : phrases.map(function (t) { return 'Ask about ' + t; });
   if (!typer) { typer = typewriter($('q'), homePhrases, ''); if (current && currentTitle) askAbout(currentTitle); }
   else if (!current) typer.set(homePhrases);
   // Suggested questions: the repository's own, else the start topics.
   var chips = $('chips'); chips.textContent = '';
-  (own ? questions.slice(0, 8) : picks.slice(0, 4)).forEach(function (p, n) {
+  (own ? questions : picks.slice(0, 4)).forEach(function (p, n) {
     var b = el('button', 'chip', own ? p : p.title); b.type = 'button'; b.onclick = function () { ask(b.textContent); };
     if (!own) chipOf[n] = b;
+    if (own && n >= 8) b.hidden = true;
     chips.append(b);
   });
+  // More than eight questions: the rest behind one chip, and all of them suggested while typing.
+  if (own && questions.length > 8) {
+    var more = el('button', 'chip more', 'More questions (' + (questions.length - 8) + ')'); more.type = 'button';
+    more.onclick = function () { chips.querySelectorAll('.chip[hidden]').forEach(function (c) { c.hidden = false; }); more.remove(); };
+    chips.append(more);
+  }
+  var list = $('qs'); list.textContent = '';
+  if (own) questions.forEach(function (q) { var o = document.createElement('option'); o.value = q; list.append(o); });
 }
 
 function aiRow(prompt) {
@@ -981,7 +991,7 @@ ${head(SITE_BASE, meta)}
       <h1 id="title">Ask the docs</h1>
       <p class="about" id="about" hidden></p>
       <p class="sub">Answers are passages quoted from the docs, linked to the exact page. Hand them to your own AI for a written answer.</p>
-      <form id="f" class="row"><input class="field" id="q" autocomplete="off" placeholder="Ask in your own words, e.g. how do I install it?" aria-label="Question" maxlength="500"><button class="btn" id="go">Ask</button></form>
+      <form id="f" class="row"><input class="field" id="q" autocomplete="off" placeholder="Ask in your own words, e.g. how do I install it?" aria-label="Question" maxlength="500" list="qs"><datalist id="qs"></datalist><button class="btn" id="go">Ask</button></form>
       <div class="chips" id="chips"></div>
     </section>
     <section id="start"></section>
