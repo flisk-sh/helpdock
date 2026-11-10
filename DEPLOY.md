@@ -67,7 +67,7 @@ Check it:
 curl -s -X POST https://helpdock.flisk.si/flisk-sh/flisk/tree/main/docs/answer -H 'content-type: application/json' -d '{"question":"How do I use Flisk in CI?"}'
 ```
 
-`"available":true` with an `answer` means it works. `404` means the two settings are missing or the repository is not in `HELPDOCK_AI_REPOS`; `503` means today's calls are used up.
+`GET` on the same address answers `{"available": true}` or `false` (always 200, so a page can ask on every load without a console error). `"available":true` with an `answer` means it works. `404` means the two settings are missing or the repository is not in `HELPDOCK_AI_REPOS`; `503` means today's calls are used up.
 
 ## Add or replace docs
 
