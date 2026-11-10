@@ -13,6 +13,8 @@ export interface McpDeps {
   name: string;
   search(query: string, limit: number): Promise<SearchHit[]>;
   link?: LinkFor;
+  /** A hit's page inside the help center, returned next to its GitHub link. */
+  page?: LinkFor;
 }
 
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
@@ -31,7 +33,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     },
     async ({ query, limit }) => {
       const hits = dedupeHits(await deps.search(query, (limit ?? 5) * 2)).slice(0, limit ?? 5);
-      const sources = toSources(query, hits, deps.link, htmlToMarkdown).map(({ excerpt: _md, ...src }) => src);
+      const sources = toSources(query, hits, deps.link, htmlToMarkdown, deps.page).map(({ excerpt: _md, ...src }) => src);
       return text({ query, hits: sources });
     },
   );
@@ -46,7 +48,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ question }) => {
-      const answer: Answer = extractiveAnswer(question, await deps.search(question, 10), deps.link, htmlToMarkdown);
+      const answer: Answer = extractiveAnswer(question, await deps.search(question, 10), deps.link, htmlToMarkdown, deps.page);
       return text({ reply: answer.reply, sources: answer.sources.map(({ excerpt: _md, ...src }) => src) });
     },
   );

@@ -93,3 +93,18 @@ export function securityHeaders(html: string): Record<string, string> {
     'permissions-policy': 'camera=(), microphone=(), geolocation=()',
   };
 }
+
+// The read-only JSON routes of a help center. They take no cookies or credentials and change nothing, so any site may
+// call them from a browser (flisk.sh renders a repository's pages from /pages and /page). /mcp sets its own headers.
+const READ_ROUTES = new Set(['status', 'pages', 'page', 'search', 'lead', 'readme']);
+
+/** CORS headers for a request to one of a help center's routes: only GET, HEAD and OPTIONS on the read-only ones. */
+export function readCorsHeaders(route: string, method: string | undefined): Record<string, string> | null {
+  if (!READ_ROUTES.has(route) || !['GET', 'HEAD', 'OPTIONS'].includes(method ?? '')) return null;
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, HEAD, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    'access-control-max-age': '86400',
+  };
+}

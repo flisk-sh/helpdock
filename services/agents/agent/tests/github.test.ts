@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { inScope, repoBase, sparsePatterns, parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, readRepoViaGit, selectDocs } from '../src/github';
+import { inScope, isTranslatedFile, repoBase, sparsePatterns, parseLsTree, docPriority, fileUrl, githubAnchor, htmlToMarkdown, isDocPath, mkdocsToMarkdown, normalizeMarkdown, parseRepoPath, readRepoViaGit, selectDocs } from '../src/github';
 
 describe('parseRepoPath', () => {
   it('reads owner, repo and the rest', () => {
@@ -47,6 +47,32 @@ describe('isDocPath', () => {
     expect(isDocPath('docs/intro/index.rst')).toBe(true);
     expect(isDocPath('i18n/pt-br/guide.md')).toBe(false);
     expect(isDocPath('docs/api/index.md')).toBe(true);
+  });
+});
+
+describe('translations and drafts', () => {
+  it('drops translated copies kept next to the original, and keeps English and look-alike names', () => {
+    for (const f of ['README-de.md', 'README-pt-BR.md', 'README-zh_cn.md', 'README.ja.md', 'readme_fr.md', 'intro.zh-CN.md', 'guide.ko.mdx']) {
+      expect(isTranslatedFile(f.toLowerCase())).toBe(true);
+    }
+    for (const f of ['readme.md', 'readme-en.md', 'readme.en.md', 'setup-ui.md', 'api.v2.md', 'go-cloud-ide-1.md', 'readme-dev.md', 'byo.md']) {
+      expect(isTranslatedFile(f)).toBe(false);
+    }
+    expect(isDocPath('docs/README-ar.md')).toBe(false);
+    expect(isDocPath('docs/recipes/README-zh_cn.md')).toBe(false);
+    expect(isDocPath('docs/README.md')).toBe(true);
+  });
+
+  it('drops drafts folders', () => {
+    expect(isDocPath('docs/drafts/show-hn.md')).toBe(false);
+    expect(isDocPath('_drafts/post.md')).toBe(false);
+    expect(isDocPath('docs/draft-mode.md')).toBe(true);
+  });
+
+  it('keeps docs/security.md as a doc page, and the root SECURITY.md policy low', () => {
+    expect(docPriority('docs/security.md')).toBeGreaterThan(0);
+    expect(docPriority('SECURITY.md')).toBeLessThan(0);
+    expect(docPriority('docs/support.md')).toBeGreaterThan(0);
   });
 });
 

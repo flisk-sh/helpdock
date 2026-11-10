@@ -350,10 +350,17 @@ const centerCss = String.raw`
 .pill { font-size:12.5px; color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:3px 10px; white-space:nowrap; }
 .layout { max-width:1280px; margin:0 auto; padding:0 20px; display:grid; grid-template-columns:280px minmax(0, 1fr); gap:32px; }
 aside.side { position:sticky; top:58px; align-self:start; max-height:calc(100vh - 58px); overflow:auto; padding:18px 0 30px; }
-.side input { width:100%; height:38px; font:inherit; font-size:14px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--ink); }
+.side input { position:sticky; top:0; z-index:2; box-shadow:0 -18px 0 0 var(--bg), 0 8px 0 0 var(--bg); margin-bottom:8px; width:100%; height:38px; font:inherit; font-size:14px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); color:var(--ink); }
 .side .group { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:16px 0 4px; overflow-wrap:anywhere; }
 .side a.pg { display:block; font-size:14px; line-height:1.35; color:var(--ink); text-decoration:none; padding:5px 8px; border-radius:7px; overflow-wrap:anywhere; }
-.side a.pg:hover, .side a.pg.on { background:var(--tint); color:var(--accent); }
+/* Long titles take two lines at most; the whole title and the file are in the tooltip. */
+.side a.pg .tt { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.side a.pg:hover { background:var(--tint); }
+.side a.pg.on { background:var(--tint); color:var(--accent); font-weight:600; box-shadow:inset 2px 0 0 var(--accent); }
+.side .showall { font:inherit; font-size:13px; color:var(--accent); background:none; border:0; padding:5px 8px; cursor:pointer; }
+details.fold.grp { margin-top:6px; }
+details.fold.grp > summary { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+details.fold.grp > .kids { margin-left:0; padding-left:0; border-left:0; }
 .side .count { font-size:13px; color:var(--muted); margin-top:10px; }
 main.main { padding:28px 0 60px; min-width:0; }
 .main h1 { font-size:clamp(26px, 3.6vw, 36px); letter-spacing:-.025em; line-height:1.15; margin:0 0 6px; overflow-wrap:anywhere; }
@@ -383,7 +390,7 @@ main.main { padding:28px 0 60px; min-width:0; }
 @keyframes spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation:none; } }
 .article h2 { font-size:26px; letter-spacing:-.02em; margin:12px 0 4px; overflow-wrap:anywhere; }
-.article h3 { font-size:18px; margin:26px 0 8px; overflow-wrap:anywhere; }
+.article h3 { font-size:18px; margin:26px 0 8px; overflow-wrap:anywhere; scroll-margin-top:150px; }
 .article .md { font-size:15.5px; }
 .back { font-size:14px; text-decoration:none; }
 .warn { color:var(--warn); }
@@ -409,9 +416,12 @@ details.fold.more > summary { color:var(--muted); }
 @media (prefers-reduced-motion: reduce) { .pcard, details.fold > summary::before { transition:none; } }
 @media (max-width: 860px) {
   .layout { grid-template-columns:1fr; gap:0; }
-  aside.side { position:static; max-height:none; padding:0; display:none; }
-  aside.side.open { display:block; padding:12px 0; }
+  aside.side { display:none; }
+  /* On a phone the page list opens over the page, under the header, and scrolls on its own. */
+  aside.side.open { display:block; position:fixed; align-self:stretch; top:58px; left:0; right:0; bottom:0; max-height:none; z-index:6; background:var(--bg); padding:12px 16px 40px; overflow:auto; overscroll-behavior:contain; border-top:1px solid var(--line); }
+  .side a.pg { padding:8px; }
   .mobile-pages { display:inline-flex; }
+  .crumb .sep, .crumb .avatar { display:none; }
   .hit .md { padding-left:16px; }
   .hide-sm { display:none; }
   .pill { display:none; }
@@ -421,7 +431,7 @@ details.fold.more > summary { color:var(--muted); }
 const centerJs = String.raw`
 var base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
 var $ = function (id) { return document.getElementById(id); };
-var info = null, pages = [], current = null, readmeShown = false, typing = false;
+var info = null, pages = [], groups = [], current = null, readmeShown = false, typing = false;
 // While the index builds, the README comes straight from GitHub so there is something to read at once.
 // Search is open while the last pages are added: show the count, and reload the page list once it is complete.
 function followIndexing() {
@@ -429,7 +439,7 @@ function followIndexing() {
   setTimeout(function () {
     api('status').then(function (s) {
       info = s;
-      if (s.indexing) return followIndexing();
+      if (s.indexing || (warmed && !s.indexed)) return followIndexing();
       setStatus((s.files ? s.files + ' pages' : s.sections + ' sections') + (s.sha && /^[0-9a-f]{7,}$/.test(s.sha) ? ' · ' + s.sha.slice(0, 7) : ''));
       loadPages();
     }).catch(function () { setTimeout(followIndexing, 3000); });
@@ -474,7 +484,10 @@ function boot() {
     if (s.github) $('label').href = s.github; else $('label').removeAttribute('href');
     if (s.kind === 'repo') { var av = $('avatar'); av.src = 'https://github.com/' + s.label.split('/')[0] + '.png?size=64'; av.hidden = false; }
     // A folder's heading is the folder ("terraform/v1.17.x"), the header keeps the whole address.
-    $('title').textContent = 'Ask the ' + (s.label.indexOf(' › ') > 0 ? s.label.split(' › ')[1] : s.label) + ' docs';
+    // A folder named docs is not a name ("Ask the docs docs"): the repository's is.
+    var folderName = s.label.indexOf(' › ') > 0 ? s.label.split(' › ')[1] : '';
+    if (/^(docs?|documentation|content|site|website)$/i.test(folderName)) folderName = '';
+    $('title').textContent = 'Ask the ' + (folderName || s.label.split(' › ')[0].split('/').pop()) + ' docs';
     if (s.status === 'building') {
       var p = s.progress || { files: 0 };
       setStatus(s.queued ? 'Waiting…' : 'Indexing…');
@@ -503,11 +516,12 @@ function boot() {
     $('mcpjson').textContent = JSON.stringify({ mcpServers: servers }, null, 2);
     $('ask').hidden = false;
     loadPages();
+    // Without a search index the page list has file names for titles ("DESIGN", "SKILL"): build it now, and load the
+    // list again with the pages' own titles when it is done.
+    if (s.kind === 'repo' && !s.indexed) { warm(); setTimeout(followIndexing, 1500); }
 
-    var hash = decodeURIComponent(location.hash.slice(1));
-    if (hash.indexOf('page=') === 0) openPage(hash.slice(5));
-    else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
-    else if (hash === 'mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
+    if (location.hash === '#mcp') $('mcp').hidden = false; // a link straight to "Use in your AI"
+    else route();
     // No autofocus: the typing placeholder shows the kind of question to ask; a click starts.
   }).catch(function (e) {
     // Busy or a dropped connection: keep the name and the README on screen and try again; only a real error stops.
@@ -567,27 +581,74 @@ function sortedKids(n) {
   });
 }
 function pageLink(p, showPath) {
-  var a = el('a', 'pg' + (current === p.source ? ' on' : ''), p.title);
+  var a = el('a', 'pg' + (current === p.source ? ' on' : ''));
+  a.append(el('span', 'tt', p.title));
   a.href = '#page=' + encodeURIComponent(p.source);
-  a.title = p.source;
+  a.title = p.title + '\n' + p.source;
+  if (current === p.source) a.setAttribute('aria-current', 'page');
   if (showPath) a.append(el('span', 'pp', p.source));
   a.onclick = function (e) { e.preventDefault(); openPage(p.source); };
   return a;
 }
-var openFirst = {};
+var byPriority = function (a, b) { return ((b.priority || 0) - (a.priority || 0)) || a.source.localeCompare(b.source, undefined, { numeric: true }); };
+// A long list shows its first pages and a button for the rest (the current page is always shown).
+var SHOW = 12;
+function appendPages(list, box) {
+  var wrap = el('div'); box.append(wrap);
+  var all = list.length <= SHOW + 3;
+  list.forEach(function (p, i) { if (all || i < SHOW || p.source === current) wrap.append(pageLink(p)); });
+  if (all) return;
+  var more = el('button', 'showall', 'Show all ' + list.length); more.type = 'button';
+  more.onclick = function () { wrap.textContent = ''; list.forEach(function (p) { wrap.append(pageLink(p)); }); };
+  wrap.append(more);
+}
+// Folders the reader opened or closed stay that way while they move between pages.
+var foldState = {};
+function fold(label, count, open, cls, key) {
+  var d = el('details', 'fold' + (cls ? ' ' + cls : ''));
+  key = key || label;
+  d.open = key in foldState ? foldState[key] || !!open && !!current : !!open;
+  d.addEventListener('toggle', function () { foldState[key] = d.open; });
+  var sum = el('summary', null, label); if (count != null) sum.append(el('span', 'n', String(count))); d.append(sum);
+  var inner = el('div', 'kids'); d.append(inner);
+  return { d: d, box: inner };
+}
 function renderNode(n, depth, box) {
-  n.pages.slice().sort(function (a, b) { return ((b.priority || 0) - (a.priority || 0)) || a.source.localeCompare(b.source, undefined, { numeric: true }); })
-    .forEach(function (p) { box.append(pageLink(p)); });
+  appendPages(n.pages.slice().sort(byPriority), box);
   sortedKids(n).forEach(function (k) {
-    var d = el('details', 'fold'); d.style.setProperty('--depth', depth);
-    var holdsCurrent = current && current.indexOf(k.path + '/') === 0;
-    if (depth === 0 && isDocFolder(k) && openFirst.done !== true) { d.open = true; openFirst.done = true; }
-    if (holdsCurrent) d.open = true;
-    var sum = el('summary', null, k.label); sum.append(el('span', 'n', String(k.count))); d.append(sum);
-    var inner = el('div', 'kids'); renderNode(k, depth + 1, inner); d.append(inner);
-    box.append(d);
+    // A folder of one page is that page, not a folder to open.
+    if (k.count === 1 && k.pages.length === 1) { box.append(pageLink(k.pages[0])); return; }
+    var f = fold(k.label, k.count, current && current.indexOf(k.path + '/') === 0 || (depth === 0 && openFirst.next === k), '', 'dir:' + k.path);
+    f.d.style.setProperty('--depth', depth);
+    renderNode(k, depth + 1, f.box);
+    box.append(f.d);
   });
 }
+// The pages in the folder tree: top-level doc pages, then doc folders (closed, but the one with the current page),
+// then everything else folded away.
+function renderTree(list, box, label) {
+  var root = buildTree(list);
+  var top = root.pages.filter(function (p) { return (p.priority || 0) > 0; }).sort(byPriority);
+  var others = root.pages.filter(function (p) { return (p.priority || 0) <= 0; });
+  var docFolders = sortedKids(root).filter(isDocFolder);
+  // A repository whose docs are all in one folder (Next.js: docs/) opens it; one with pages at the top does not.
+  openFirst = { next: top.length === 0 ? docFolders[0] : null };
+  if (top.length) {
+    if (label) { var g = fold(label, top.length, true, 'grp'); appendPages(top, g.box); box.append(g.d); }
+    else appendPages(top, box);
+  }
+  docFolders.forEach(function (k) { var holder = { kids: {}, pages: [] }; holder.kids[k.name] = k; renderNode(holder, 0, box); });
+  var rest = sortedKids(root).filter(function (k) { return !isDocFolder(k); });
+  var restCount = others.length + rest.reduce(function (n, k) { return n + k.count; }, 0);
+  if (restCount > 0) {
+    var m = fold('Everything else', restCount, current && (others.concat(pagesUnder(rest)).some(function (p) { return p.source === current; })), 'more');
+    others.sort(byPriority).forEach(function (p) { m.box.append(pageLink(p)); });
+    rest.forEach(function (k) { var holder = { kids: {}, pages: [] }; holder.kids[k.name] = k; renderNode(holder, 1, m.box); });
+    box.append(m.d);
+  }
+}
+function pagesUnder(nodes) { var out = []; (function walk(ns) { ns.forEach(function (n) { out = out.concat(n.pages); walk(Object.keys(n.kids).map(function (k) { return n.kids[k]; })); }); })(nodes); return out; }
+var openFirst = {};
 function renderSide(filter) {
   var box = $('tree'); box.textContent = '';
   var f = filter.trim().toLowerCase();
@@ -598,33 +659,36 @@ function renderSide(filter) {
     $('count').textContent = hits.length + ' of ' + pages.length + ' pages';
     return;
   }
-  var root = buildTree(pages);
-  openFirst = {};
-  // Top-level pages with doc priority (README) first, then the doc folders open, then everything else folded.
-  var docs = el('div'), rest = el('div');
-  root.pages.filter(function (p) { return (p.priority || 0) > 0; }).forEach(function (p) { docs.append(pageLink(p)); });
-  var others = root.pages.filter(function (p) { return (p.priority || 0) <= 0; });
-  var restCount = others.length;
-  sortedKids(root).forEach(function (k) {
-    var holder = { name: '', kids: {}, pages: [] }; holder.kids[k.name] = k;
-    if (isDocFolder(k)) renderNode(holder, 0, docs); else { renderNode(holder, 1, rest); restCount += k.count; }
-  });
-  others.forEach(function (p) { rest.prepend(pageLink(p)); });
-  box.append(docs);
-  if (restCount > 0) {
-    var d = el('details', 'fold more'); var sum = el('summary', null, 'Everything else'); sum.append(el('span', 'n', String(restCount)));
-    d.append(sum, rest); box.append(d);
-  }
+  if (groups.length) {
+    // The repository's own groups (.helpdock.json), in its order.
+    var currentGroup = current && (pages.filter(function (p) { return p.source === current; })[0] || {}).group;
+    groups.forEach(function (name, i) {
+      var list = pages.filter(function (p) { return p.group === name; }).sort(function (a, b) { return a.order - b.order; });
+      if (!list.length) return;
+      // Open: the group with the current page, or the first group when no page of a group is open.
+      var g = fold(name, list.length, currentGroup ? currentGroup === name : i === 0, 'grp');
+      list.forEach(function (p) { g.box.append(pageLink(p)); });
+      box.append(g.d);
+    });
+    var loose = pages.filter(function (p) { return !p.group; });
+    if (loose.length) { var m = fold('More', loose.length, loose.some(function (p) { return p.source === current; }), 'grp'); renderTree(loose, m.box); box.append(m.d); }
+  } else renderTree(pages, box, 'Pages');
   $('count').textContent = pages.length + ' pages';
+  var on = box.querySelector('a.pg.on');
+  if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
 }
 function loadPages() {
-  api('pages').then(function (b) { pages = b.pages; renderSide(''); renderStart(); });
+  // The list is cached for a minute; once an index brings the pages' own titles it is a different list (?s=sections).
+  api('pages' + (info && info.sections ? '?s=' + info.sections : '')).then(function (b) { pages = b.pages; groups = b.groups || []; renderSide($('filter').value); renderStart(); });
 }
 
 // "Start here": the pages a newcomer reads first, as cards with their lead sentence. Chosen by the file's own name
 // (installation.mdx, getting-started.md, ...), in this order, then other short-titled doc pages.
 function startPicks() {
-  var topics = [/^(getting-started|quick-?start|introduction|intro|overview|index|readme)$/, /^install(ation|ing)?$/, /^(project-structure|structure|concepts?)$/, /^(routing|basics|usage|tutorial|guide)$/, /^(configuration|config|configuring|settings)$/, /^(deploy(ing|ment)?|production)$/, /^(api|api-reference|reference|cli)$/, /^(faq|troubleshoot(ing)?)$/];
+  // The repository's own choice (.helpdock.json "start"), in its order.
+  var chosen = pages.filter(function (p) { return p.start; }).sort(function (a, b) { return a.start - b.start; });
+  if (chosen.length) return chosen.slice(0, 6);
+  var topics = [/^(getting-started|quick-?start|introduction|intro|overview)$/, /^(index|readme)$/, /^install(ation|ing)?$/, /^(project-structure|structure|concepts?)$/, /^(routing|basics|usage|tutorial|guide)$/, /^(configuration|config|configuring|settings)$/, /^(deploy(ing|ment)?|production)$/, /^(api|api-reference|reference|cli)$/, /^(faq|troubleshoot(ing)?)$/];
   var repoName = (info && info.label ? info.label.split('/').pop() : '').toLowerCase();
   // Without an index the pages carry no lead; the cards fetch them (see renderStart). Titles come from file names.
   var usable = function (p) { return (!p.summary || (p.summary.length >= 40 && !/^[\w./-]+\.mdx?$/i.test(p.summary))) && !/^readme$/i.test(p.title); };
@@ -723,10 +787,35 @@ function ask(question) {
     .finally(function () { $('go').disabled = false; });
 }
 
-function openPage(source, section) {
+// GitHub's heading anchor, as the server's githubAnchor: links to "page.md#some-heading" land on that heading.
+function slug(h) { return h.toLowerCase().replace(/[*_~()\x60\[\]]/g, '').replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s/g, '-'); }
+// The view the address asks for: #page=<file>[#heading], #q=<question>, or the home view.
+function route() {
+  var hash = decodeURIComponent(location.hash.slice(1));
+  if (hash.indexOf('page=') === 0) { var rest = hash.slice(5), at = rest.indexOf('#'); openPage(at < 0 ? rest : rest.slice(0, at), at < 0 ? undefined : rest.slice(at + 1), true); }
+  else if (hash.indexOf('q=') === 0) ask(hash.slice(2));
+  else if (!hash && current) { current = null; showView('answers', true); $('answers').textContent = ''; renderSide($('filter').value); }
+}
+window.addEventListener('popstate', function () { if (info) route(); });
+// Links between pages (rewritten by the server to #page=… with data-page) open here, not on GitHub; a heading anchor
+// (#install) scrolls the open page.
+document.addEventListener('click', function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('#article a, #answers a') : null;
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+  if (a.dataset.page) { e.preventDefault(); openPage(a.dataset.page, a.dataset.anchor); return; }
+  var href = a.getAttribute('href') || '';
+  if (href.charAt(0) === '#' && href.indexOf('#page=') !== 0 && href.indexOf('#q=') !== 0) {
+    var t = document.getElementById('h-' + decodeURIComponent(href.slice(1)));
+    if (t) { e.preventDefault(); t.scrollIntoView({ block: 'start' }); }
+  }
+});
+
+function openPage(source, section, fromAddress) {
   showView('article');
   current = source; renderSide($('filter').value);
-  history.replaceState(null, '', '#page=' + encodeURIComponent(source));
+  // A new history entry, so Back returns to the page or answers before; opening from the address replaces it.
+  var want = '#page=' + encodeURIComponent(section ? source + '#' + section : source);
+  if (location.hash !== want) { if (fromAddress) history.replaceState(null, '', want); else history.pushState(null, '', want); }
   var box = $('article'); box.textContent = '';
   var wait = el('div', 'loading'); wait.append(el('div', 'spin'), el('span', null, 'Opening…')); box.append(wait);
   api('page?source=' + encodeURIComponent(source)).then(function (p) {
@@ -736,7 +825,7 @@ function openPage(source, section) {
     if (p.url) { var gh = el('a', 'ghost', 'Open on GitHub ↗'); gh.href = p.url; gh.target = '_blank'; gh.rel = 'noopener'; gh.style.marginTop = '10px'; box.append(gh); }
     var target = null;
     p.sections.forEach(function (s) {
-      if (s.section) { var h = el('h3', null, s.section); box.append(h); if (s.section === section) target = h; }
+      if (s.section) { var h = el('h3', null, s.section); h.id = 'h-' + slug(s.section); box.append(h); if (section && (s.section === section || slug(s.section) === section)) target = h; }
       var md = el('div', 'md'); md.innerHTML = s.html; box.append(md);
     });
     if (target) target.scrollIntoView({ block: 'start' }); else window.scrollTo(0, 0);
@@ -757,7 +846,13 @@ $('mcpbtn').onclick = function () { $('mcp').hidden = !$('mcp').hidden; };
 $('copymcp').onclick = function () { copy($('mcpurl').textContent, $('copymcp')); };
 $('copycc').onclick = function () { copy($('mcpcc').textContent, $('copycc')); };
 $('copyjson').onclick = function () { copy($('mcpjson').textContent, $('copyjson')); };
-$('pagesbtn').onclick = function () { $('side').classList.toggle('open'); };
+$('pagesbtn').onclick = function () {
+  var side = $('side');
+  // Over the page, from the bottom of the header (the site bar above it may still be on screen).
+  side.style.top = Math.max(0, document.querySelector('.top').getBoundingClientRect().bottom) + 'px';
+  side.classList.toggle('open');
+  var on = side.querySelector('a.pg.on'); if (on) on.scrollIntoView({ block: 'center' });
+};
 boot();
 `;
 

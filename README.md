@@ -37,6 +37,34 @@ curl -s -X POST "$AGENT_URL/docs" -H 'content-type: application/json' \
   -d "$(jq -n --arg m "$(cat billing.md)" '{source:"billing.md", markdown:$m}')"
 ```
 
+## Choose what your repository's help center shows
+
+Helpdock finds the Markdown in a repository by itself, and leaves out what is not documentation for readers: dependencies, fixtures, change logs, release notes, translations (`docs/de/…`, `README-de.md`, `intro.ja.md`) and `drafts/` folders. Links between pages stay in Helpdock.
+
+To choose the pages and their order yourself, add a `.helpdock.json` at the top of the help center's folder: the folder of a `/tree/<branch>/<folder>` link (`docs/.helpdock.json` for `helpdock.flisk.si/owner/repo/tree/main/docs`), or the repository root.
+
+```json
+{
+  "include": ["**"],
+  "exclude": ["internal/**", "benchmarks/results/**"],
+  "groups": [
+    { "name": "Get started", "pages": ["quickstart.md", "install/*.md"] },
+    { "name": "Guides", "pages": ["guides/**"] },
+    { "name": "Reference", "pages": ["reference/**", "cli.md"] }
+  ],
+  "start": ["quickstart.md", "guides/ci.md"]
+}
+```
+
+| Key | What it does |
+| --- | --- |
+| `include` | Globs of the pages to show. Without it, every page Helpdock finds. |
+| `exclude` | Globs of pages to leave out of the page list, the search index and the MCP server. |
+| `groups` | The sections of the page list, in this order. A page goes to the first group with a glob that matches it, and is placed by the first glob it matches, then by path. Pages in no group come after the groups, under *More*. |
+| `start` | The *Start here* cards, in order (up to 12; six are shown). Without it, the first group's first six pages. |
+
+Every key is optional. Paths and globs are relative to that folder: `*` matches within one folder, `**` across folders, and a folder name means everything in it. Helpdock reads the file each time it lists the repository (every six hours, or on the first visit after a restart); a missing or broken file means the defaults above.
+
 ## Online
 
 Helpdock runs online for free at **helpdock.flisk.si** on one Render free web service (from [`render.yaml`](render.yaml) and the root [`Dockerfile`](Dockerfile)), with no database account and no AI key: without `DATABASE_URL` it uses Bun's built-in SQLite. Bring your own Postgres (Neon or any other) to keep added pages and history. [DEPLOY.md](DEPLOY.md) has the steps, the DNS record, the limits and what free costs you (the service sleeps after 15 idle minutes).
@@ -50,8 +78,10 @@ Helpdock runs online for free at **helpdock.flisk.si** on one Render free web se
 | `POST /mcp` | Public read-only MCP (Streamable HTTP): `search_docs`, `ask_help_center` |
 | `GET /status`, `/pages`, `/page?source=` | The help center's state, its page list, one page's sections |
 | `/owner/repo/…` | With `HELPDOCK_REPOS=1`: all of the above for a public GitHub repository (`/owner/repo/turn`, `/owner/repo/mcp`, …) |
-| `GET /search?q=` | Ranked sections with snippets |
+| `GET /search?q=` | Ranked sections with snippets; each hit has `url` (the file on GitHub) and `page` (the same page in Helpdock) |
 | `POST /docs` | `{"source", "markdown"}` adds or replaces one page; needs `authorization: Bearer $HELPDOCK_ADMIN_TOKEN` when the token is set, and is off in production without it |
+
+The read-only routes (`/status`, `/pages`, `/page`, `/search`, `/lead`, `/readme`) send `access-control-allow-origin: *`, so another site can show a repository's pages from the browser. `/mcp` allows it too; `/turn`, `/session` and `/docs` do not.
 
 Settings: `HELPDOCK_DOCS_DIR`, `HELPDOCK_REPOS`, `HELPDOCK_PREWARM`, `HELPDOCK_REPO_BUILDS_PER_HOUR`, `GITHUB_TOKEN` (optional: raises GitHub's 60 API calls an hour), and for online use `HELPDOCK_ADMIN_TOKEN`, `HELPDOCK_PROXY`, `HELPDOCK_TURNS_PER_HOUR`, `HELPDOCK_PUBLIC_URL` (see the header of `services/agents/agent/src/index.ts`).
 

@@ -145,9 +145,30 @@ export function isDocPath(path: string): boolean {
   if (/(^|\/)(releases?|release-notes|changelogs?)\//.test(lower)) return false;
   // Translations: docs/de/..., i18n/ja/... are skipped; English is what the index and its stop words are for.
   if (/(^|\/)(docs|i18n|translations|locales?|content|lang)\/(?!en(-[a-z]+)?\/)[a-z]{2}(-[a-z]{2,4})?\//.test(lower)) return false;
+  // Drafts are unfinished by definition: not what a reader of the docs should land on.
+  if (/(^|\/)_?drafts?\//.test(lower)) return false;
   const base = lower.split('/').pop() ?? '';
+  // Translations kept next to the original: README-de.md, README.zh_CN.md, intro.ja.md.
+  if (isTranslatedFile(base)) return false;
   // Change logs and legal text match every query and answer none.
   return !/^(changelog|changes|history|license|licence|notice|third[-_]party|code[-_]of[-_]conduct)/.test(base);
+}
+
+// ISO 639-1 codes of the languages docs are most often translated into ("en" is not here: English is kept).
+const LANGUAGES = new Set(
+  'af am ar az be bg bn bs ca cs cy da de el eo es et eu fa fi fil fr ga gl gu he hi hr hu hy id is it ja ka kk km kn ko lo lt lv mk ml mn mr ms my nb ne nl no pa pl ps pt ro ru si sk sl sq sr sv sw ta te th tl tr uk ur uz vi zh'.split(' '),
+);
+
+/**
+ * A file that is a translation of another one by its name: README-de.md, README_pt-BR.md, README.zh_cn.md (any
+ * separator after README), or name.<language>.md for any page (intro.ja.md, guide.zh-CN.mdx). Only known language
+ * codes count, so setup-ui.md or api.v2.md are never taken for one.
+ */
+export function isTranslatedFile(base: string): boolean {
+  const m =
+    /^readme[-_.]([a-z]{2,3})(?:[-_][a-z]{2,4})?\.(?:md|mdx|markdown|rst)$/i.exec(base) ??
+    /^[^.]+\.([a-z]{2,3})(?:[-_][a-z]{2,4})?\.(?:md|mdx|markdown|rst)$/i.exec(base);
+  return !!m && LANGUAGES.has(m[1].toLowerCase());
 }
 
 /**
@@ -162,7 +183,9 @@ export function docPriority(path: string): number {
   if (inDocs) score += 4;
   if (lower === 'readme.md' || lower === 'readme.mdx') score += 6;
   else if (/(^|\/)readme\.mdx?$/.test(lower)) score += 1;
-  if (/(^|\/)(agents|claude|gemini|contributing|security|support|pull_request_template|issue_template)[^/]*\.mdx?$/.test(lower)) score -= 4;
+  if (/(^|\/)(agents|claude|gemini|contributing|pull_request_template|issue_template)[^/]*\.mdx?$/.test(lower)) score -= 4;
+  // SECURITY.md and SUPPORT.md at the root are GitHub policy files; docs/security.md is a page about the product.
+  else if (!inDocs && /(^|\/)(security|support)[^/]*\.mdx?$/.test(lower)) score -= 4;
   // Folders of prompts, skills and agent instructions are tooling for contributors' coding agents.
   if (/(^|\/)(agents?|prompts?|skills?|\.?claude|copilot)\//.test(lower)) score -= 4;
   // How to contribute to the project is for its maintainers, not for people using it.

@@ -7,6 +7,7 @@
 //   index    SQLite full-text search over the pages' text, built only when someone asks a question or calls the MCP
 //            for that repository, and dropped after it has been idle for ten minutes (memory follows use, not the
 //            number of repositories opened)
+import { applyConfig, CONFIG_FILE, type Placement, parseConfig } from './config';
 import { chunkMarkdown, type SearchHit, summarize, titleFromPath } from './docs';
 import {
   docPriority,
@@ -53,6 +54,13 @@ export interface RepoEntry {
   /** Bytes of indexed text. */
   bytes: number;
   truncated: boolean;
+  /** The pages the repository's .helpdock.json lists under "start", in order (full paths). */
+  start: string[];
+  /** The named groups of the page list from .helpdock.json, in order, and each grouped page's group and place. */
+  groups: string[];
+  placement: Map<string, Placement>;
+  /** Titles and leads learned from pages read so far, so the page list keeps them when there is no index. */
+  known: Map<string, { title: string; lead: string }>;
   /** Waiting for a slot; it starts when one frees (never refused as busy). */
   queued: boolean;
   /** A search index exists (building or built). */
@@ -82,7 +90,21 @@ export interface RepoCacheOptions {
   indexIdleMs: number;
   list: typeof listRepoDocs;
   read: typeof readRepoDocs;
+  /** The text of the help center's .helpdock.json at a commit, or null when there is none. */
+  config: (ref: RepoRef, sha: string) => Promise<string | null>;
   now: () => number;
+}
+
+/** .helpdock.json from raw.githubusercontent.com: at the top of the scope folder, or of the repository. */
+async function fetchConfig(ref: RepoRef, sha: string): Promise<string | null> {
+  const path = ref.scope ? `${ref.scope}/${CONFIG_FILE}` : CONFIG_FILE;
+  const res = await fetch(`https://raw.githubusercontent.com/${ref.owner}/${ref.repo}/${sha}/${path.split('/').map(encodeURIComponent).join('/')}`, {
+    headers: { 'user-agent': 'helpdock' },
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const text = await res.text();
+  return text.length <= 64 * 1024 ? text : null;
 }
 
 const DEFAULTS: RepoCacheOptions = {
@@ -94,6 +116,7 @@ const DEFAULTS: RepoCacheOptions = {
   indexIdleMs: Number(process.env.HELPDOCK_INDEX_IDLE_MS || 10 * 60 * 1000),
   list: listRepoDocs,
   read: readRepoDocs,
+  config: fetchConfig,
   now: Date.now,
 };
 
@@ -249,6 +272,10 @@ export class RepoCache {
       sections: previous?.sections ?? 0,
       bytes: previous?.bytes ?? 0,
       truncated: previous?.truncated ?? false,
+      start: previous?.start ?? [],
+      groups: previous?.groups ?? [],
+      placement: previous?.placement ?? new Map(),
+      known: previous?.known ?? new Map(),
       queued: true,
       indexed: previous?.indexed ?? false,
       indexing: previous?.indexing ?? false,
@@ -265,7 +292,10 @@ export class RepoCache {
       entry.queued = false;
       try {
         const tree = await deadline(this.listTree(ref, entry), BUILD_DEADLINE_MS);
-        if (tree.paths.length === 0) {
+        // The repository's own settings (.helpdock.json): pages to leave out, pages to start with.
+        const config = parseConfig(await this.opts.config(ref, tree.sha).catch(() => null));
+        const { paths, start, groups, placement } = applyConfig(tree.paths, config, ref.scope);
+        if (paths.length === 0) {
           entry.status = 'error';
           entry.error = 'This repository has no Markdown documentation.';
           return entry;
@@ -273,13 +303,16 @@ export class RepoCache {
         Object.assign(entry, {
           status: 'ready' as const,
           sha: tree.sha,
-          paths: tree.paths,
-          files: tree.paths.length,
+          paths,
+          start,
+          groups,
+          placement,
+          files: paths.length,
           truncated: tree.truncated,
           stores: { store: sessionsFor(key), docs: this.lazyDocs(entry) },
           builtAt: this.opts.now(),
         });
-        console.log(`[repos] ${key}: ${tree.paths.length} docs listed${tree.truncated ? ' (truncated)' : ''}, rss ${Math.round(rssMb())} MB`);
+        console.log(`[repos] ${key}: ${paths.length} docs listed${config ? ` (${CONFIG_FILE})` : ''}${tree.truncated ? ' (truncated)' : ''}, rss ${Math.round(rssMb())} MB`);
         return entry;
       } catch (err) {
         entry.status = entry.stores ? 'ready' : 'error';
@@ -338,7 +371,9 @@ export class RepoCache {
     void this.schedule(async () => {
       try {
         const read = await deadline(this.opts.read(entry.ref), BUILD_DEADLINE_MS);
-        const order = [...read.files].sort((a, b) => docPriority(b.path) - docPriority(a.path) || a.path.localeCompare(b.path));
+        // Only the pages in the listing: what .helpdock.json leaves out is not searched either.
+        const listed = new Set(entry.paths.map((p) => p.path));
+        const order = read.files.filter((f) => listed.has(f.path)).sort((a, b) => docPriority(b.path) - docPriority(a.path) || a.path.localeCompare(b.path));
         for (let start = 0; start < order.length; start += INDEX_BATCH) {
           if (entry.index !== index) return; // dropped while building
           const batch = order.slice(start, start + INDEX_BATCH);
@@ -393,8 +428,16 @@ export class RepoCache {
       },
       async pages() {
         const full = indexed();
-        if (full) return full.pages();
-        return entry.paths.map((p) => ({ source: p.path, title: titleFromPath(p.path), sections: 0, lead: '' }));
+        if (full) {
+          const pages = await full.pages();
+          for (const p of pages) entry.known.set(p.source, { title: p.title, lead: (p.lead ?? '').slice(0, 1200) });
+          return pages;
+        }
+        // Without an index: the titles learned from an earlier index or from pages opened, else the file name.
+        return entry.paths.map((p) => {
+          const k = entry.known.get(p.path);
+          return { source: p.path, title: k?.title ?? titleFromPath(p.path), sections: 0, lead: k?.lead ?? '' };
+        });
       },
       async page(source: string) {
         const full = indexed();
@@ -405,6 +448,7 @@ export class RepoCache {
         if (text === null) return null;
         const chunks = chunkMarkdown(source, text);
         if (chunks.length === 0) return null;
+        entry.known.set(source, { title: chunks[0].title, lead: chunks[0].body.slice(0, 1200) });
         return { source, title: chunks[0].title, sections: chunks.map((c) => ({ section: c.section, body: c.body })) };
       },
     };

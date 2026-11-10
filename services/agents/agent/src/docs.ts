@@ -30,6 +30,8 @@ export interface Source {
   text: string;
   /** Where the section lives, when known (a GitHub file and heading). */
   url?: string;
+  /** The same page inside the help center, so a reader can stay there. */
+  page?: string;
 }
 
 export interface Answer {
@@ -239,22 +241,24 @@ export function dedupeHits(hits: SearchHit[]): SearchHit[] {
 }
 
 /** Every hit as a numbered source with its excerpt and link. */
-export function toSources(question: string, hits: SearchHit[], link?: LinkFor, toText: (md: string) => string = (m) => m): Source[] {
+export function toSources(question: string, hits: SearchHit[], link?: LinkFor, toText: (md: string) => string = (m) => m, page?: LinkFor): Source[] {
   return hits.map((h, i) => {
     const quote = h.body !== undefined ? excerpt(h.body, question) : cleanSnippet(h.snippet);
-    return { n: i + 1, title: h.title, section: h.section, source: h.source, excerpt: quote, text: toText(quote).trim(), url: link?.(h) };
+    const src: Source = { n: i + 1, title: h.title, section: h.section, source: h.source, excerpt: quote, text: toText(quote).trim(), url: link?.(h) };
+    const here = page?.(h);
+    return here ? { ...src, page: here } : src;
   });
 }
 
 // The answer: the best matching passages, each with its citation number.
-export function extractiveAnswer(question: string, hits: SearchHit[], link?: LinkFor, toText?: (md: string) => string): Answer {
+export function extractiveAnswer(question: string, hits: SearchHit[], link?: LinkFor, toText?: (md: string) => string, page?: LinkFor): Answer {
   if (hits.length === 0) {
     return {
       reply: `I couldn't find anything about "${question}" in the docs. Try other words, or browse the pages.`,
       sources: [],
     };
   }
-  const sources = toSources(question, dedupeHits(hits).slice(0, 3), link, toText);
+  const sources = toSources(question, dedupeHits(hits).slice(0, 3), link, toText, page);
   const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''}\n${s.text}`);
   return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources };
 }
@@ -301,15 +305,21 @@ export function queryWords(question: string): string[] {
 
 /** A page's lead as one plain sentence or two, for the page cards: its first paragraph, Markdown removed. */
 export function summarize(body: string, max = 160): string {
-  const lead = blocks(body).find((b) => !/^(```|~~~|\||<|>|!\[|[-*+] |\d+\. )/.test(b) && /[a-z]{3}/i.test(b)) ?? '';
-  const text = lead
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
-    .replace(/<[^>]+>/g, '')
-    .replace(/[`*_]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const plain = (b: string) =>
+    b
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // a linked badge ([![](badge.svg)](url)) leaves nothing, not "[](url)"
+      .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/[`*_]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  // The first paragraph that still has words once its badges, images and markup are gone.
+  const text =
+    blocks(body)
+      .filter((b) => !/^(```|~~~|\||<|>|!\[|[-*+] |\d+\. )/.test(b))
+      .map(plain)
+      .find((t) => /[a-z]{3}/i.test(t)) ?? '';
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const end = cut.lastIndexOf('. ');

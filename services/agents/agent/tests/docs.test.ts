@@ -190,6 +190,21 @@ describe('summarize', () => {
     expect(summarize('Alpha beta gamma delta epsilon zeta', 20)).toBe('Alpha beta gamma…');
     expect(summarize('| a | b |\n|---|---|')).toBe('');
   });
+
+  it('skips a paragraph of linked badges for the first one with words', () => {
+    expect(summarize('[![](https://github.com/o/r/blob/main/docs/assets/coverage.svg)](https://github.com/o/r)\n\nFlisk runs your app.')).toBe('Flisk runs your app.');
+  });
+});
+
+describe('page links', () => {
+  it('gives each source its page in the help center next to its GitHub link', () => {
+    const hits: SearchHit[] = [{ id: 1, source: 'docs/ci.md', title: 'CI', section: 'Setup', snippet: 'Run it in CI.', rank: 1 }];
+    const [src] = toSources('ci', hits, (h) => `https://github.com/o/r/blob/x/${h.source}`, undefined, (h) => `https://h/o/r/#page=${h.source}`);
+    expect(src.url).toBe('https://github.com/o/r/blob/x/docs/ci.md');
+    expect(src.page).toBe('https://h/o/r/#page=docs/ci.md');
+    expect(extractiveAnswer('ci', hits, undefined, undefined, (h) => `p:${h.source}`).sources[0].page).toBe('p:docs/ci.md');
+    expect(toSources('ci', hits)[0]).not.toHaveProperty('page');
+  });
 });
 
 describe('nameBoost', () => {
