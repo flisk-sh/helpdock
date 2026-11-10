@@ -285,7 +285,9 @@ export function aiPrompt(question: string, sources: Source[], siteUrl: string): 
 const STOP_WORDS = new Set(
   (
     'a an and are as at be but by can do does for from has have how i if in into is it its me my no not of on or our ' +
-    'should so that the their them then there these they this to was we what when where which who why will with you your'
+    'should so that the their them then there these they this to was we what when where which who why will with you your ' +
+    // Words that frame a comparison ("difference between X and Y", "X vs Y") and say nothing about its topic.
+    'between difference differences versus vs'
   ).split(' '),
 );
 
@@ -370,7 +372,31 @@ export function nameBoost(hit: Pick<SearchHit, 'source' | 'title' | 'section'>, 
   const words = queryWords(question);
   if (words.length === 0) return 1;
   const share = (list: string[]) => (list.length ? list.filter((w) => words.some((q) => sameWord(q, w))).length / list.length : 0);
-  return 1 + 1.6 * share(fileWords(hit.source)) + 0.8 * share(queryWords(hit.title)) + 0.6 * share(queryWords(hit.section));
+  return (
+    1 +
+    1.6 * share(fileWords(hit.source)) +
+    0.8 * share(queryWords(hit.title)) +
+    0.6 * share(queryWords(hit.section)) +
+    3 * headingAsks(hit.section, question)
+  );
+}
+
+// Words that only frame a comparison ("flisk up vs tilt up", "difference between X and Y"): left out when matching a
+// question to a heading, so the compared things decide.
+const FRAME_WORDS = new Set(['vs', 'versus', 'difference', 'differences', 'between', 'compared', 'compare', 'use']);
+
+/**
+ * 1 when a section heading asks the question itself ("Do we need Kubernetes to run Flisk?", "flisk up vs tilt up" for
+ * "difference between flisk up and tilt up"): nearly all of the question's words are in the heading and nearly all of
+ * the heading's are in the question. Else 0, so a long page that merely mentions the words does not win on this.
+ */
+export function headingAsks(section: string, question: string): number {
+  const words = (s: string) => queryWords(s).filter((w) => !FRAME_WORDS.has(w));
+  const q = words(question);
+  const h = words(section);
+  if (q.length < 3 || h.length < 2) return 0; // "install flisk" is too short to tell one heading from another
+  const covered = (from: string[], into: string[]) => from.filter((w) => into.some((o) => sameWord(o, w))).length / from.length;
+  return Math.min(covered(q, h), covered(h, q)) >= 0.75 ? 1 : 0;
 }
 
 /**

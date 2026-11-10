@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aboutFromReadme, aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, fileWords, nameBoost, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
+import { aboutFromReadme, aiPrompt, chunkMarkdown, cleanHeading, cleanSnippet, dedupeHits, fileWords, headingAsks, nameBoost, summarize, excerpt, extractiveAnswer, ftsQuery, queryWords, type SearchHit, toSources } from '../src/docs';
 
 const hit = (n: number, extra: Partial<SearchHit> = {}): SearchHit => ({
   id: n,
@@ -252,6 +252,24 @@ describe('nameBoost', () => {
     expect(nameBoost(page('docs/guides/environment-variables.mdx', 'How to use environment variables in Next.js'), env)).toBeGreaterThan(
       nameBoost(page('docs/glossary.mdx', 'Next.js Glossary', 'Environment Variables'), env),
     );
+  });
+
+  it('ranks a heading that asks the question above a long page that mentions its words', () => {
+    const k8s = 'Do we need Kubernetes to run Flisk?';
+    expect(nameBoost(page('docs/faq-teams.md', 'Flisk for teams: FAQ', 'Do we need Kubernetes to run Flisk?'), k8s)).toBeGreaterThan(
+      nameBoost(page('docs/comparison.md', 'Flisk compared', 'Flisk vs kind and minikube'), k8s),
+    );
+    const tilt = 'difference between flisk up and tilt up';
+    expect(nameBoost(page('docs/commands-compared.md', 'Flisk commands compared', 'flisk up vs tilt up'), tilt)).toBeGreaterThan(
+      nameBoost(page('docs/comparison.md', 'Flisk compared', 'Migration between Flisk and Plain Tilt'), tilt) + 2,
+    );
+  });
+
+  it('matches a heading to a question only when both share nearly all their words', () => {
+    expect(headingAsks('flisk create vs flisk project', 'should I use flisk create or flisk project')).toBe(1);
+    expect(headingAsks('Migration between Flisk and Plain Tilt', 'difference between flisk up and tilt up')).toBe(0);
+    expect(headingAsks('Middleware', 'How do I add middleware?')).toBe(0);
+    expect(headingAsks('', 'anything')).toBe(0);
   });
 
   it('is 1 when nothing in the name matches', () => {
