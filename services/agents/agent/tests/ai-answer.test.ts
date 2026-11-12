@@ -30,7 +30,7 @@ describe("aiConfig", () => {
 			token: "tok",
 			model: DEFAULT_MODEL,
 			repos: ["flisk-sh/flisk"],
-			perDay: 50,
+			perDay: 15,
 			perVisitorPerHour: 10,
 		});
 	});
