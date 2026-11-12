@@ -1,0 +1,15 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "files": {
+    "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.generated.ts", "!**/seed-docs"]
+  },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": { "enabled": true },
+  "overrides": [
+    {
+      "includes": ["services/agents/agent/src/github.ts", "services/agents/agent/src/rst.ts"],
+      "linter": { "rules": { "suspicious": { "noControlCharactersInRegex": "off" } } }
+    }
+  ]
+}
