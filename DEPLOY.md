@@ -55,7 +55,7 @@ Off by default: without these two settings Helpdock calls no model. With them, `
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `HELPDOCK_AI_REPOS` | `flisk-sh/flisk` | The `owner/repo` help centers that may answer with the model. Others answer 404, so a visitor cannot spend the allowance on any repository |
-| `HELPDOCK_AI_PER_DAY` | `50` | Model calls a day for everyone together (UTC day). The same Cloudflare account pays for inference.flisk.si's 100 a day, so size both together |
+| `HELPDOCK_AI_PER_DAY` | `15` | Model calls a day for everyone together (UTC day). One answer costs up to ~180 Workers AI neurons; the account's free 10,000 a day is shared with inference.flisk.si (3,500) and gardener.flisk.si (~2,000), so size them together |
 | `HELPDOCK_AI_PER_HOUR` | `10` | Questions per visitor address per hour |
 | `HELPDOCK_AI_MODEL` | `@cf/qwen/qwen2.5-coder-32b-instruct` | The Workers AI model |
 

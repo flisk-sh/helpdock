@@ -38,7 +38,9 @@ export function aiConfig(
 		token,
 		model: env.HELPDOCK_AI_MODEL?.trim() || DEFAULT_MODEL,
 		repos: list,
-		perDay: num(env.HELPDOCK_AI_PER_DAY, 50),
+		// 15 answers of at most ~180 neurons (six 1,500-char passages in, 350 tokens out) is ~2,700 of the Cloudflare
+		// account's free 10,000 Workers AI neurons a day, which inference.flisk.si and gardener.flisk.si share.
+		perDay: num(env.HELPDOCK_AI_PER_DAY, 15),
 		perVisitorPerHour: num(env.HELPDOCK_AI_PER_HOUR, 10),
 	};
 }

@@ -40,7 +40,7 @@ import { VIDEO } from './video.generated';
 //                           Without them Helpdock calls no model
 //   HELPDOCK_AI_REPOS       owner/repo help centers that may use it (default flisk-sh/flisk)
 //   HELPDOCK_AI_MODEL       Workers AI model (default @cf/qwen/qwen2.5-coder-32b-instruct)
-//   HELPDOCK_AI_PER_DAY     model calls a day for everyone together (default 50); HELPDOCK_AI_PER_HOUR per visitor (10)
+//   HELPDOCK_AI_PER_DAY     model calls a day for everyone together (default 15); HELPDOCK_AI_PER_HOUR per visitor (10)
 //   HELPDOCK_PREWARM        comma-separated owner/repo list built at start, so the landing page's examples open at
 //                           once (default: the examples on the landing page)
 // /health: the process is alive. /ready: the checkpoint store is reachable. Idle is healthy, so /health never checks the store.
