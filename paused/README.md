@@ -1,6 +1,6 @@
-# Paused page for helpdock.flisk.si
+# Redirect for helpdock.flisk.si while Helpdock is paused
 
-Render's free hours ran out on 2026-11-12, and every free Render service in the workspace is suspended until 1 December. This Worker answers at helpdock.flisk.si meanwhile, with a plain page and a 503.
+Render's free hours ran out on 2026-11-12, and every free Render service in the workspace is suspended until 1 December. This Worker answers at helpdock.flisk.si meanwhile: every page redirects (302) to https://flisk.sh/, and `/mcp` and `/answer` answer a JSON 503.
 
 ## Put it up
 

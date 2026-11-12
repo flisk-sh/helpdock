@@ -1,4 +1,4 @@
-# helpdock.flisk.si while the Render service is suspended. Deploy: bunx wrangler@4 deploy (from this folder).
+# helpdock.flisk.si while the Render service is suspended: redirects to flisk.sh. Deploy: bunx wrangler@4 deploy (from this folder).
 # The custom domain needs no DNS record of its own, but the hostname must have none: delete the CNAME
 # helpdock -> helpdock.onrender.com in zone flisk.si first (Cloudflare error 100117 otherwise).
 name = "helpdock-paused"
