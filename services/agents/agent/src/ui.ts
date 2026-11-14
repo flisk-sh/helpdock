@@ -298,7 +298,7 @@ export const landingPage = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, description: SITE.description })}
 <style>${css}${landingCss}</style>
-<script src="https://flisk.si/assets/bar.js" defer></script>
+<script defer data-domain="helpdock.flisk.si" src="https://flisk.sh/a.js"></script><script src="https://flisk.si/assets/bar.js" defer></script>
 </head>
 <body>
 <div class="stage"><div class="wrap">
@@ -967,7 +967,7 @@ export const centerPageFor = (meta: PageMeta) => `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${head(SITE_BASE, meta)}
 <style>${css}${centerCss}</style>
-<script src="https://flisk.si/assets/bar.js" defer></script>
+<script defer data-domain="helpdock.flisk.si" src="https://flisk.sh/a.js"></script><script src="https://flisk.si/assets/bar.js" defer></script>
 </head>
 <body>
 <div class="top stage"><div class="wrap">
