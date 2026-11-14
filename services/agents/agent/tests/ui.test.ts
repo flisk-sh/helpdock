@@ -67,3 +67,13 @@ describe('the header brand', () => {
     }
   });
 });
+
+describe('visit counting', () => {
+  it('puts the Flisk Analytics script on the landing page and the help center, once each, before the bar', () => {
+    const tag = '<script defer data-domain="helpdock.flisk.si" src="https://flisk.sh/a.js"></script>';
+    for (const page of [landingPage, centerPage]) {
+      expect(page.split(tag)).toHaveLength(2);
+      expect(page.indexOf(tag)).toBeLessThan(page.indexOf('https://flisk.si/assets/bar.js'));
+    }
+  });
+});

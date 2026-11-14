@@ -51,7 +51,9 @@ describe('securityHeaders', () => {
     const expected = createHash('sha256').update('alert(1)').digest('base64');
     expect(scriptHash(html)).toBe(`'sha256-${expected}'`);
     const csp = securityHeaders(html)['content-security-policy'];
-    expect(csp).toContain(`script-src 'sha256-${expected}'`);
+    // the page counts visits with a cookieless script and beacon, so the policy lets both through
+    expect(csp).toContain(`script-src 'sha256-${expected}' https://flisk.si https://flisk.sh`);
+    expect(csp).toContain("connect-src 'self' https://analytics.flisk.si");
     expect(csp).toContain("frame-ancestors 'none'");
   });
 });
