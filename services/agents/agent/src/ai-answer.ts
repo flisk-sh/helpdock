@@ -236,7 +236,7 @@ const FILLER =
 
 export function removeFiller(answer: string): string {
 	return answer
-		.replace(FILLER, (m, lead) => (lead === "\n" ? "\n" : ""))
+		.replace(FILLER, (_m, lead) => (lead === "\n" ? "\n" : ""))
 		.replace(/[ \t]+\n/g, "\n")
 		.replace(/\n{3,}/g, "\n\n")
 		.trim();

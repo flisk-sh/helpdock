@@ -179,7 +179,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<any> {
+async function readJson(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
   const tooLarge = new HttpError(413, `body is over ${maxBytes} bytes`);
   if (Number(req.headers['content-length']) > maxBytes) throw tooLarge;
   // Read to the end even past the limit (keeping nothing): Bun's node:http drops the reply to a request whose body
@@ -692,7 +692,7 @@ const server = createServer(async (req, res) => {
 
 // Bind beyond loopback: Traefik (or Render's proxy) reaches the container over the network.
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('\n🤖 agent agent on http://localhost:' + PORT + ' (store: ' + DURABILITY + ')');
+  console.log(`\n🤖 agent agent on http://localhost:${PORT} (store: ${DURABILITY})`);
   void seedDocs();
   if (REPOS) void prewarm();
 });
@@ -724,7 +724,7 @@ async function prewarm() {
 function shutdown(signal: string) {
   if (draining) return;
   draining = true;
-  console.log('[agent] ' + signal + ' received, draining ' + inFlight + ' in-flight request(s)');
+  console.log(`[agent] ${signal} received, draining ${inFlight} in-flight request(s)`);
   server.close(async () => {
     await store.close();
   });

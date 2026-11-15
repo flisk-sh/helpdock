@@ -135,7 +135,7 @@ export class TarStream {
   private finishEntry(): void {
     const entry = this.entry;
     this.entry = null;
-    if (!entry || !entry.keep) return;
+    if (!entry?.keep) return;
     const data = concat(this.parts);
     this.parts = [];
     if (entry.kind === 'pax') {

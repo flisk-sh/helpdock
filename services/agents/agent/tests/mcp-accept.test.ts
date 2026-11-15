@@ -10,7 +10,7 @@ beforeAll(async () => {
   server = createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
-    await handleMcp(req, res, raw ? JSON.parse(raw) : undefined, {} as any);
+    await handleMcp(req, res, raw ? JSON.parse(raw) : undefined, {} as unknown as Parameters<typeof handleMcp>[3]);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
