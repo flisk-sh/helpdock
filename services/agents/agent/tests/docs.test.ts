@@ -145,7 +145,7 @@ describe('cleanHeading', () => {
 
 describe('excerpt', () => {
   it('takes the start of a long block after a one-line lead-in', () => {
-    const code = '```sh\n' + Array.from({ length: 80 }, (_, i) => `echo line ${i}`).join('\n') + '\n```';
+    const code = `\`\`\`sh\n${Array.from({ length: 80 }, (_, i) => `echo line ${i}`).join('\n')}\n\`\`\``;
     const e = excerpt(`Install uv with the installer.\n\n${code}`, 'install uv');
     expect(e.startsWith('Install uv with the installer.\n\n```sh\necho line 0')).toBe(true);
     expect(e.endsWith('…\n```')).toBe(true);

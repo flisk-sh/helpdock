@@ -62,7 +62,8 @@ describe('RepoCache with .helpdock.json', () => {
   it('keeps the titles the index found once the index is gone', async () => {
     const repos = cache(null);
     const entry = await repos.get(ref).ready;
-    const docs = entry.stores!.docs;
+    const docs = entry.stores?.docs;
+    if (!docs) throw new Error('expected the index stores');
     // Before any index: titles from file names.
     expect((await docs.pages()).find((p) => p.source === 'docs/ci.md')?.title).toBe('Ci');
     await docs.search('workflow', 5); // builds the index

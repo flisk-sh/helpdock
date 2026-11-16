@@ -69,7 +69,7 @@ const CODE = new Set(['code-block', 'sourcecode', 'code', 'parsed-literal', 'con
 const VERSION: Record<string, string> = { versionadded: 'New in version', versionchanged: 'Changed in version', deprecated: 'Deprecated since version' };
 
 const fenceLang = (lang: string) => lang.trim().split(/[+\s]/)[0].replace(/^pycon$/, 'python').replace(/^doscon$/, 'bat');
-const fence = (lang: string, lines: string[]) => ['```' + fenceLang(lang), ...lines, '```'];
+const fence = (lang: string, lines: string[]) => [`\`\`\`${fenceLang(lang)}`, ...lines, '```'];
 
 function dedent(lines: string[]): string[] {
   const min = Math.min(...lines.filter((l) => l.trim()).map(indentOf), Infinity);

@@ -36,7 +36,7 @@ jobs:
       - name: Typecheck
         run: bun x --bun tsc --noEmit -p .
       - name: Lint
-        run: bun x --bun biome check .
+        run: bun x --bun biome check . --error-on-warnings
       - name: Tests (unit, injection, render fixtures)
         run: bun x --bun vitest run
 
@@ -58,7 +58,7 @@ jobs:
       - name: Typecheck
         run: bun x --bun tsc --noEmit -p .
       - name: Lint
-        run: bun x --bun biome check .
+        run: bun x --bun biome check . --error-on-warnings
       - name: Tests (annotations, admin token)
         run: bun x --bun vitest run
 

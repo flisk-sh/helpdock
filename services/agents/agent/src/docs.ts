@@ -107,7 +107,7 @@ export function chunkMarkdown(source: string, markdown: string): DocChunk[] {
   const merged = new Map<string, DocChunk>();
   for (const c of chunks) {
     const prev = merged.get(c.section);
-    if (prev) prev.body = (prev.body + '\n\n' + c.body).slice(0, MAX_SECTION_CHARS);
+    if (prev) prev.body = (`${prev.body}\n\n${c.body}`).slice(0, MAX_SECTION_CHARS);
     else merged.set(c.section, { ...c });
   }
   return [...merged.values()];
@@ -259,7 +259,7 @@ export function extractiveAnswer(question: string, hits: SearchHit[], link?: Lin
     };
   }
   const sources = toSources(question, dedupeHits(hits).slice(0, 3), link, toText, page);
-  const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''}\n${s.text}`);
+  const lines = sources.map((s) => `[${s.n}] ${s.title}${s.section ? ` › ${s.section}` : ''}\n${s.text}`);
   return { reply: `Here's what the docs say:\n\n${lines.join('\n\n')}`, sources };
 }
 
@@ -274,7 +274,7 @@ export function aiPrompt(question: string, sources: Source[], siteUrl: string): 
     `Question: ${question}\n\nPassages:\n`;
   let body = '';
   for (const s of sources.slice(0, 3)) {
-    const passage = `\n[${s.n}] ${s.title}${s.section ? ' › ' + s.section : ''} (${s.url ?? s.source})\n${s.text}\n`;
+    const passage = `\n[${s.n}] ${s.title}${s.section ? ` › ${s.section}` : ''} (${s.url ?? s.source})\n${s.text}\n`;
     if (head.length + body.length + passage.length > MAX_PROMPT_CHARS) break;
     body += passage;
   }

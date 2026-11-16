@@ -41,7 +41,7 @@ export const EXAMPLE_REPOS = EXAMPLES.map((e) => e.path);
  * someone's repository can't rank under this domain (or get it flagged) for what that repository says. */
 export const indexable = (path: string) => EXAMPLE_REPOS.includes(path.replace(/\/$/, ''));
 
-const css = String.raw`
+const css = `
 :root { --bg:#f6f5f1; --panel:#ffffff; --ink:#17171a; --muted:#66655f; --line:#e3e1da; --accent:#0d7a62; --accent-ink:#ffffff; --tint:#e6f2ee; --code:#f1efe9; --warn:#9a5b00; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#121312; --panel:#1b1c1b; --ink:#ecebe6; --muted:#9c9b93; --line:#2c2d2b; --accent:#4fd1ac; --accent-ink:#0b1512; --tint:#163029; --code:#232422; --warn:#f0b35a; } }
 :root[data-theme="dark"] { --bg:#121312; --panel:#1b1c1b; --ink:#ecebe6; --muted:#9c9b93; --line:#2c2d2b; --accent:#4fd1ac; --accent-ink:#0b1512; --tint:#163029; --code:#232422; --warn:#f0b35a; }
@@ -108,7 +108,7 @@ footer.foot .badge img { display:block; max-width:100%; height:auto; }
 
 // A placeholder that types example phrases, deletes them and types the next, as if someone were typing. It stops
 // while the field has focus or a value, and with reduced motion it shows the first phrase still.
-const typewriterJs = String.raw`
+const typewriterJs = `
 function typewriter(input, phrases, prefix) {
   prefix = prefix || '';
   // set(list, fixed): new phrases; fixed shows the first one still (a page being read is named, not cycled).
@@ -137,7 +137,7 @@ function typewriter(input, phrases, prefix) {
 }
 `;
 
-const landingCss = String.raw`
+const landingCss = `
 .hero { padding:56px 0 28px; }
 .eyebrow { display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:600; color:var(--accent); background:var(--tint); padding:5px 12px; border-radius:999px; }
 .hero h1 { font-size:clamp(34px, 5.6vw, 58px); line-height:1.04; letter-spacing:-.035em; margin:18px 0 16px; max-width:15ch; }
