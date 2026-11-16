@@ -5,7 +5,27 @@ export const BACK_ON = "1 December 2026";
 export const TARGET = "https://flisk.sh/";
 const RETRY_AFTER = "Tue, 01 Dec 2026 00:00:00 GMT";
 
-export default {
+const BASELINE = {
+	"x-content-type-options": "nosniff",
+	"x-frame-options": "SAMEORIGIN",
+	"strict-transport-security": "max-age=31536000; includeSubDomains",
+	"referrer-policy": "strict-origin-when-cross-origin",
+	"permissions-policy": "camera=(), microphone=(), geolocation=()",
+	"content-security-policy": "frame-ancestors 'self'",
+};
+
+const withSecurityHeaders = (response) => {
+	const headers = new Headers(response.headers);
+	for (const [name, value] of Object.entries(BASELINE))
+		if (!headers.has(name)) headers.set(name, value);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+};
+
+const paused = {
 	fetch(request) {
 		const { pathname } = new URL(request.url);
 		if (
@@ -31,5 +51,11 @@ export default {
 			status: 302,
 			headers: { location: TARGET, "cache-control": "no-store" },
 		});
+	},
+};
+
+export default {
+	async fetch(request) {
+		return withSecurityHeaders(await paused.fetch(request));
 	},
 };
