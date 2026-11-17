@@ -15,8 +15,8 @@
       "ratio": 2,
       "better": "lower"
     },
-    "result": "bench/north-star.json",
-    "evidence": "https://github.com/flisk-sh/.github/blob/main/docs/NORTH_STAR.md",
+    "result": "docs/north-star/result.json",
+    "evidence": "docs/north-star/README.md",
     "max_age_days": 30
   }
 }
