@@ -309,7 +309,7 @@ ${head(SITE_BASE, { path: '', title: `${SITE.name}: ${SITE.tagline}`, descriptio
   <section class="hero">
     <span class="eyebrow">Open source · No signup · No API key</span>
     <h1>Any GitHub repo's docs, as a <span class="grad">help center</span>.</h1>
-    <p class="lede">Search and browse a repository's Markdown, get answers quoted from the exact page with a link to it on GitHub, and give the same docs to your own AI over MCP.</p>
+    <p class="lede">Swap github.com for helpdock.flisk.si and ask your question in plain words. You get answers quoted from the exact page, with a link back to it on GitHub.</p>
     <div class="swap">
       <div class="from mono"><s>github.com</s>/vercel/next.js</div>
       <div class="to"><a class="mono" id="tryurl" href="/vercel/next.js/"><b data-host>helpdock.flisk.si</b>/vercel/next.js</a><button class="ghost" id="copytry" type="button">Copy</button></div>
