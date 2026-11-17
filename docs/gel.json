@@ -1,12 +1,18 @@
 {
-  "mode": "report",
+  "mode": "block",
   "guards": {
-    "secret-scan": "report",
-    "pinned-actions": "report",
-    "workflow-permissions": "report",
+    "secret-scan": "block",
+    "pinned-actions": "block",
+    "workflow-permissions": "block",
     "dead-links": "report",
-    "done-without-green": "report",
-    "north-star": "report"
+    "done-without-green": "block",
+    "north-star": "report",
+    "adr-required": "block",
+    "api-contract": "block",
+    "five-second-test": "block",
+    "migrations-append-only": "block",
+    "release-integrity": "block",
+    "tests-with-change": "block"
   },
   "north_star": {
     "metric": "seconds from flisk up to the first answer with a source",
