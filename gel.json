@@ -16,7 +16,7 @@
       "better": "lower"
     },
     "result": "bench/north-star.json",
-    "evidence": "https://github.com/flisk-sh/.github/blob/main/NORTH_STAR.md",
+    "evidence": "https://github.com/flisk-sh/.github/blob/main/docs/NORTH_STAR.md",
     "max_age_days": 30
   }
 }
