@@ -53,7 +53,10 @@ describe('securityHeaders', () => {
     const csp = securityHeaders(html)['content-security-policy'];
     // the page counts visits with a cookieless script and beacon, so the policy lets both through
     expect(csp).toContain(`script-src 'sha256-${expected}' https://flisk.si https://flisk.sh`);
-    expect(csp).toContain("connect-src 'self' https://analytics.flisk.si");
+    expect(csp).toContain("connect-src 'self' https://analytics.flisk.si https://flisk.si");
+    // the shared Flisk header loads its styles and fonts from flisk.si
+    expect(csp).toContain("style-src 'unsafe-inline' https://flisk.si");
+    expect(csp).toContain('font-src https://flisk.si');
     expect(csp).toContain("frame-ancestors 'none'");
   });
 });
