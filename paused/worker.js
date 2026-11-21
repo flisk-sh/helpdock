@@ -9,7 +9,7 @@ const PAGE = `<!doctype html>
 <style>body{margin:0;font:18px/1.5 system-ui,sans-serif;background:#fff;color:#111}main{max-width:34rem;margin:0 auto;padding:12vh 20px}h1{font-size:1.9rem;line-height:1.2;margin:0 0 .6em}p{margin:0 0 1.2em}a.b{display:inline-block;background:#111;color:#fff;padding:.8em 1.2em;text-decoration:none;font-weight:600}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}a.b{background:#eee;color:#111}}</style></head>
 <body><main><h1>Helpdock is resting until ${BACK_ON}</h1>
 <p>Helpdock turns any GitHub repo's docs into a help center. It is paused for now, and it comes back on ${BACK_ON}.</p>
-<p><a class="b" href="${TARGET}">See what Flisk does</a></p></main></body></html>`;
+<p><a class="b" href="${TARGET}">See what Flisk does</a></p></main><script src="https://flisk.si/assets/bar.js" data-product="Helpdock" data-icon="helpdock" data-accent="#0d7a62" data-text="Turn any GitHub repo's docs into a help center." defer></script></body></html>`;
 const RETRY_AFTER = "Tue, 01 Dec 2026 00:00:00 GMT";
 
 const BASELINE = {

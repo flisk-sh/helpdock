@@ -77,3 +77,12 @@ describe('visit counting', () => {
     }
   });
 });
+
+describe('the shared Flisk header', () => {
+  it('turns on product mode for Helpdock with its own accent on both pages', () => {
+    for (const page of [landingPage, centerPage]) {
+      expect(page).toContain('data-product="Helpdock" data-icon="helpdock" data-accent="#0d7a62"');
+      expect(page).not.toContain('data-siblings');
+    }
+  });
+});
