@@ -35,6 +35,24 @@ describe('chunkMarkdown', () => {
     expect(chunks[0].body).toContain('# not a heading');
   });
 
+  it('keeps Markdown examples out of page titles and section headings', () => {
+    const example = ['````markdown', '```sh', '# Example title', '```', '## Example section', '`````'].join('\n');
+    const chunks = chunkMarkdown('a.md', `${example}\n\n# Real title\n\n## Install\n\nRun it.`);
+    expect(chunks.map(({ title, section, body }) => [title, section, body])).toEqual([
+      ['Real title', '', example],
+      ['Real title', 'Install', 'Run it.'],
+    ]);
+  });
+
+  it('only closes a fence with the matching marker and no info string', () => {
+    const example = ['~~~text', '```', '## Still code', '~~~info', '~~~info again', '## Also code', '~~~'].join('\n');
+    const chunks = chunkMarkdown('a.md', `# Real title\n\n## Example\n\n${example}\n\n## Next\n\nContinue.`);
+    expect(chunks.map(({ section, body }) => [section, body])).toEqual([
+      ['Example', example],
+      ['Next', 'Continue.'],
+    ]);
+  });
+
   it('merges repeated headings so (source, section) stays unique', () => {
     const chunks = chunkMarkdown('a.md', '## Fix\n\none\n\n## Fix\n\ntwo');
     expect(chunks).toHaveLength(1);
