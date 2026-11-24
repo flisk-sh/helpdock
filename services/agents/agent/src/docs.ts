@@ -70,32 +70,34 @@ export function titleFromPath(source: string): string {
 // Headings inside fenced code blocks are ignored, so a shell comment is never read as a section or the title.
 export function chunkMarkdown(source: string, markdown: string): DocChunk[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  let title = titleFromPath(source);
-  let fenced = false;
-  for (const l of lines) {
-    if (/^\s*(```|~~~)/.test(l)) fenced = !fenced;
-    else if (!fenced && /^#\s+\S/.test(l)) {
-      title = cleanHeading(l.replace(/^#\s+/, '')) || title;
-      break;
-    }
-  }
-
-  const chunks: DocChunk[] = [];
+  let title: string | undefined;
+  const chunks: Array<Omit<DocChunk, 'title'>> = [];
   let section = '';
   let buf: string[] = [];
-  let inFence = false;
+  let fence = '';
 
   const flush = () => {
     const body = buf.join('\n').trim();
-    if (body) chunks.push({ source, title, section, body: body.slice(0, MAX_SECTION_CHARS) });
+    if (body) chunks.push({ source, section, body: body.slice(0, MAX_SECTION_CHARS) });
     buf = [];
   };
 
   for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
-    const heading = !inFence && /^(#{1,3})\s+(.*)$/.exec(line);
+    const marker = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = '';
+      buf.push(line);
+      continue;
+    }
+    if (marker && (marker[1][0] === '~' || !marker[2].includes('`'))) {
+      fence = marker[1];
+      buf.push(line);
+      continue;
+    }
+    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     if (heading) {
       flush();
+      if (title === undefined && heading[1] === '#' && heading[2].trim()) title = cleanHeading(heading[2]);
       section = heading[1] === '#' ? '' : cleanHeading(heading[2]);
       continue;
     }
@@ -104,11 +106,12 @@ export function chunkMarkdown(source: string, markdown: string): DocChunk[] {
   flush();
 
   // The unique key is (source, section): merge repeated headings instead of dropping them.
+  const pageTitle = title || titleFromPath(source);
   const merged = new Map<string, DocChunk>();
   for (const c of chunks) {
     const prev = merged.get(c.section);
     if (prev) prev.body = (`${prev.body}\n\n${c.body}`).slice(0, MAX_SECTION_CHARS);
-    else merged.set(c.section, { ...c });
+    else merged.set(c.section, { ...c, title: pageTitle });
   }
   return [...merged.values()];
 }
