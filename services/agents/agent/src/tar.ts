@@ -33,20 +33,19 @@ function octal(bytes: Uint8Array): number {
   return text ? Number.parseInt(text, 8) : 0;
 }
 
-/** pax records: "<length> <key>=<value>\n", repeated. */
+/** pax records: "<length in bytes> <key>=<value>\n", repeated. */
 export function parsePax(data: Uint8Array): Record<string, string> {
   const out: Record<string, string> = {};
-  const text = decoder.decode(data);
   let i = 0;
-  while (i < text.length) {
-    const space = text.indexOf(' ', i);
+  while (i < data.length) {
+    const space = data.indexOf(0x20, i);
     if (space === -1) break;
-    const len = Number.parseInt(text.slice(i, space), 10);
-    if (!Number.isFinite(len) || len <= 0) break;
-    const record = text.slice(space + 1, i + len - 1);
+    const end = i + Number.parseInt(decoder.decode(data.subarray(i, space)), 10);
+    if (!Number.isFinite(end) || end <= space + 1 || end > data.length || data[end - 1] !== 0x0a) break;
+    const record = decoder.decode(data.subarray(space + 1, end - 1));
     const eq = record.indexOf('=');
     if (eq > 0) out[record.slice(0, eq)] = record.slice(eq + 1);
-    i += len;
+    i = end;
   }
   return out;
 }

@@ -24,8 +24,9 @@ function pax(records: Record<string, string>): Uint8Array {
   let out = '';
   for (const [k, v] of Object.entries(records)) {
     const body = ` ${k}=${v}\n`;
-    let len = body.length + 1;
-    while (String(len).length + body.length !== len) len = String(len).length + body.length;
+    const bytes = enc.encode(body).length;
+    let len = bytes + 1;
+    while (String(len).length + bytes !== len) len = String(len).length + bytes;
     out += len + body;
   }
   return enc.encode(out);
@@ -85,10 +86,21 @@ describe('TarStream', () => {
     const r = read(tar(entry('././@LongLink', `${long}\u0000`, 'L'), entry('trunc', 'body')), 64);
     expect(r.files).toEqual([[long, 'body']]);
   });
+
+  it('keeps Markdown files with UTF-8 paths in pax headers', () => {
+    const path = `repo/docs/${'caf\u00e9-'.repeat(24)}guide.md`;
+    const archived = tar(entry('PaxHeader', pax({ path }), 'x'), entry('truncated', 'body'));
+    expect(read(archived, 7).files).toEqual([[path, 'body']]);
+  });
 });
 
 describe('parsePax', () => {
   it('reads length-prefixed records', () => {
     expect(parsePax(pax({ path: 'a/b.md', comment: 'sha' }))).toEqual({ path: 'a/b.md', comment: 'sha' });
+  });
+
+  it('starts the next record at the byte offset after a UTF-8 path', () => {
+    const path = 'docs/caf\u00e9-\u{1f331}.md';
+    expect(parsePax(pax({ path, comment: 'sha' }))).toEqual({ path, comment: 'sha' });
   });
 });
